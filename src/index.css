@@ -137,6 +137,26 @@
     font-family: var(--font-mono);
   }
 
+  .latex-logo {
+    display: inline-block;
+    font-family: serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .latex-logo .a {
+    font-size: 0.75em;
+    vertical-align: 0.22em;
+    margin-left: -0.28em;
+    margin-right: -0.12em;
+  }
+
+  .latex-logo .e {
+    vertical-align: -0.22em;
+    margin-left: -0.15em;
+    margin-right: -0.08em;
+  }
+
   .checker-bg {
     background-image:
       linear-gradient(45deg, hsl(var(--checker-color)) 25%, transparent 25%),

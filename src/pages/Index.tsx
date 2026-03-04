@@ -11,6 +11,12 @@ const EXAMPLES = [
   "A tree diagram of sorting algorithms",
 ];
 
+const LatexLogo = () => (
+  <span className="latex-logo">
+    L<span className="a">A</span>T<span className="e">E</span>X
+  </span>
+);
+
 const Index = () => {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -67,7 +73,7 @@ const Index = () => {
           <h1 className="font-heading text-5xl sm:text-6xl font-bold tracking-tighter leading-[0.9] mb-4">
             Natural language
             <br />
-            to <span className="font-mono">LaTeX</span>
+            to <LatexLogo />
           </h1>
           <p className="text-muted-foreground font-heading text-lg max-w-md">
             Describe your diagram or table in plain English. Get production-ready LaTeX code instantly.
@@ -139,7 +145,7 @@ const Index = () => {
           <div className="bg-card border-2 border-foreground">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border">
               <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-                Output — LaTeX
+                Output — <LatexLogo />
               </span>
               <Button variant="ghost" size="sm" onClick={handleCopy}>
                 {copied ? (
@@ -169,7 +175,7 @@ const Index = () => {
             teXlab © 2026
           </span>
           <span className="text-xs font-mono text-muted-foreground">
-            NLP → LaTeX
+            NLP → <LatexLogo />
           </span>
         </div>
       </footer>
