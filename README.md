@@ -1,73 +1,54 @@
-# Welcome to your Lovable project
+# teXlab — Natural Language to LaTeX
 
-## Project info
+teXlab is a minimal, fast, and precise tool that converts natural language descriptions into production-ready LaTeX code. Whether you need a complex TikZ flowchart, a Venn diagram, or a data-heavy table, teXlab handles the syntax so you can focus on the content.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- **Natural Language Input**: Describe your diagram or table in plain English.
+- **TikZ & Tabular Support**: High-quality generation for flowcharts, diagrams, and tables.
+- **Copy-to-Clipboard**: Instantly copy generated code to your editor.
+- **Responsive Design**: Works on all screen sizes with a clean, minimal aesthetic.
+- **OpenRouter Integrated**: Powered by state-of-the-art LLMs via OpenRouter.
 
-There are several ways of editing your application.
+## Getting Started
 
-**Use Lovable**
+### Prerequisites
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- Node.js (v18 or higher)
+- npm or bun
 
-Changes made via Lovable will be committed automatically to this repo.
+### Installation
 
-**Use your preferred IDE**
+1. Clone the repository:
+   ```bash
+   git clone <your-repo-url>
+   cd texlab-ai-generator
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+3. Configure Environment Variables:
+   Create a `.env` file in the root directory and add your OpenRouter API key:
+   ```env
+   VITE_OPEN_ROUTER_API=your_open_router_key_here
+   ```
 
-Follow these steps:
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Tech Stack
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+- **Framework**: [React](https://reactjs.org/) with [Vite](https://vitejs.dev/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Components**: [shadcn/ui](https://ui.shadcn.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **API**: [OpenRouter](https://openrouter.ai/)
 
-# Step 3: Install the necessary dependencies.
-npm i
+## License
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+MIT © 2026 teXlab

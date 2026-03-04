@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { generateLaTeX } from "@/lib/openrouter";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, ArrowRight, Sparkles } from "lucide-react";
 
@@ -18,21 +20,15 @@ const Index = () => {
   const handleGenerate = async () => {
     if (!input.trim()) return;
     setIsGenerating(true);
-    // Simulated output for now
-    setTimeout(() => {
-      setOutput(`\\begin{tikzpicture}[node distance=2cm, auto]
-  % Generated from: "${input}"
-  \\node[draw, rectangle] (start) {Start};
-  \\node[draw, rectangle, below of=start] (process) {Process};
-  \\node[draw, diamond, below of=process] (decision) {Decision};
-  \\node[draw, rectangle, below of=decision] (end) {End};
-  
-  \\draw[->] (start) -- (process);
-  \\draw[->] (process) -- (decision);
-  \\draw[->] (decision) -- (end);
-\\end{tikzpicture}`);
+    try {
+      const latex = await generateLaTeX(input);
+      setOutput(latex);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to generate LaTeX. Please check your API key.");
+    } finally {
       setIsGenerating(false);
-    }, 1200);
+    }
   };
 
   const handleCopy = () => {
