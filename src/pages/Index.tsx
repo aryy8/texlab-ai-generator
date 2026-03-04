@@ -43,6 +43,39 @@ const Index = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const getPreviewUrl = (latex: string) => {
+    // 1. Remove markdown code blocks if present
+    let cleanedLatex = latex.replace(/```latex\n?/gi, '').replace(/```\n?/g, '').trim();
+
+    // 2. Extract preamble-only commands the LLM might generate
+    const preambleRegex = /\\(usepackage|usetikzlibrary|pgfplotsset).*?(?:\{[^}]+\}|\[[^\]]+\])+/gi;
+    const preambleMatches = cleanedLatex.match(preambleRegex) || [];
+    const preamble = preambleMatches.join('\n');
+    let body = cleanedLatex.replace(preambleRegex, '').trim();
+
+    // 3. Remove document wrappers more robustly
+    body = body.replace(/\\documentclass[\s\S]*?\{[\s\S]*?\}/gi, '');
+    body = body.replace(/\\begin\s*\{document\}/gi, '');
+    body = body.replace(/\\end\s*\{document\}/gi, '');
+    body = body.trim();
+
+    const fullDoc = `\\documentclass[border=10pt,varwidth]{standalone}
+\\usepackage{tikz}
+\\usepackage{pgfplots}
+\\usepackage{amsmath,amssymb}
+\\usepackage{array}
+\\usepackage{booktabs}
+\\usepackage{multirow}
+\\usepackage{xcolor}
+\\pgfplotsset{compat=1.14}
+${preamble}
+\\begin{document}
+${body}
+\\end{document}`;
+
+    return `https://latexonline.cc/compile?text=${encodeURIComponent(fullDoc)}`;
+  };
+
   return (
     <div className="min-h-screen checker-bg">
       {/* Nav */}
@@ -141,29 +174,52 @@ const Index = () => {
 
       {/* Output */}
       {output && (
-        <section className="max-w-5xl mx-auto px-6 pb-20">
-          <div className="bg-card border-2 border-foreground">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-              <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-                Output — <LatexLogo />
-              </span>
-              <Button variant="ghost" size="sm" onClick={handleCopy}>
-                {copied ? (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    <Check className="w-3.5 h-3.5" /> Copied
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    <Copy className="w-3.5 h-3.5" /> Copy
-                  </span>
-                )}
-              </Button>
+        <section className="max-w-6xl mx-auto px-6 pb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Code Panel */}
+            <div className="bg-card border-2 border-foreground flex flex-col h-[600px]">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/50">
+                <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
+                  Code — <LatexLogo />
+                </span>
+                <Button variant="ghost" size="sm" onClick={handleCopy}>
+                  {copied ? (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <Check className="w-3.5 h-3.5" /> Copied
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <Copy className="w-3.5 h-3.5" /> Copy
+                    </span>
+                  )}
+                </Button>
+              </div>
+              <pre className="px-4 py-4 overflow-auto flex-1">
+                <code className="font-mono text-sm text-foreground leading-relaxed">
+                  {output}
+                </code>
+              </pre>
             </div>
-            <pre className="px-4 py-4 overflow-x-auto">
-              <code className="font-mono text-sm text-foreground leading-relaxed">
-                {output}
-              </code>
-            </pre>
+
+            {/* Preview Panel */}
+            <div className="bg-card border-2 border-foreground flex flex-col h-[600px]">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/50">
+                <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
+                  Preview
+                </span>
+              </div>
+              <div className="flex-1 bg-white overflow-hidden flex items-center justify-center p-2 relative">
+                {isGenerating ? (
+                  <div className="text-muted-foreground animate-pulse font-mono text-sm">Compiling...</div>
+                ) : (
+                  <iframe
+                    src={getPreviewUrl(output)}
+                    className="w-full h-full border-0"
+                    title="LaTeX Preview"
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </section>
       )}
