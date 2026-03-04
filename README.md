@@ -33,13 +33,15 @@ teXlab is a minimal, fast, and precise tool that converts natural language descr
 3. Configure Environment Variables:
    Create a `.env` file in the root directory and add your OpenRouter API key:
    ```env
-   VITE_OPEN_ROUTER_API=your_open_router_key_here
+   OPEN_ROUTER_API=your_open_router_key_here
    ```
 
 4. Start the development server:
+   To run both the frontend and the secure backend API locally, use the Vercel CLI:
    ```bash
-   npm run dev
+   npx vercel dev
    ```
+   *Alternately, you can run `npm run dev`, but you will need to host the API endpoint separately.*
 
 ## Tech Stack
 
