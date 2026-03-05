@@ -22,10 +22,12 @@ const Index = () => {
   const [output, setOutput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
     setIsGenerating(true);
+    setIsPreviewLoading(true);
     try {
       const latex = await generateLaTeX(input);
       setOutput(latex);
@@ -209,13 +211,28 @@ ${body}
                 </span>
               </div>
               <div className="flex-1 bg-white overflow-hidden flex items-center justify-center p-2 relative">
-                {isGenerating ? (
-                  <div className="text-muted-foreground animate-pulse font-mono text-sm">Compiling...</div>
-                ) : (
+                {isGenerating && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground font-mono text-sm gap-3 z-10 bg-white">
+                    <Sparkles className="w-5 h-5 animate-pulse text-primary" />
+                    <span className="animate-pulse tracking-widest uppercase text-xs font-semibold">Generating Code...</span>
+                  </div>
+                )}
+
+                {isPreviewLoading && !isGenerating && output && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground font-mono text-sm gap-4 z-10 bg-white">
+                    <div className="flex items-center justify-center">
+                      <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    </div>
+                    <span className="animate-pulse tracking-widest uppercase text-xs font-semibold">Compiling Diagram...</span>
+                  </div>
+                )}
+
+                {output && (
                   <iframe
                     src={getPreviewUrl(output)}
-                    className="w-full h-full border-0"
+                    className={`w-full h-full border-0 transition-opacity duration-300 ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
                     title="LaTeX Preview"
+                    onLoad={() => setIsPreviewLoading(false)}
                   />
                 )}
               </div>
