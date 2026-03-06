@@ -2,7 +2,8 @@ import { useState } from "react";
 import { generateLaTeX } from "@/lib/openrouter";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, ArrowRight, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Copy, Check, ArrowRight, Sparkles, FileText } from "lucide-react";
 
 const EXAMPLES = [
   "A flowchart showing the compilation process of a LaTeX document",
@@ -91,14 +92,21 @@ ${body}
               beta
             </span>
           </div>
-          <a
-            href="https://www.latex-project.org/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-          >
-            LaTeX docs ↗
-          </a>
+          <div className="flex items-center gap-4">
+            <Link to="/workspace">
+              <Button variant="outline" size="sm" className="font-mono text-xs hidden sm:flex border-primary/20 hover:bg-primary/10 hover:text-primary transition-colors">
+                <FileText className="w-3.5 h-3.5 mr-1.5" /> Full Paper Workspace
+              </Button>
+            </Link>
+            <a
+              href="https://www.latex-project.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+            >
+              LaTeX docs ↗
+            </a>
+          </div>
         </div>
       </nav>
 
