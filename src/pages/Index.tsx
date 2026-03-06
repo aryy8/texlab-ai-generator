@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { generateLaTeX } from "@/lib/openrouter";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { Copy, Check, ArrowRight, Sparkles, FileText } from "lucide-react";
 
-const EXAMPLES = [
-  "A flowchart showing the compilation process of a LaTeX document",
-  "A 3x4 table comparing programming languages by paradigm, typing, and speed",
-  "A Venn diagram of frontend, backend, and fullstack skills",
-  "A tree diagram of sorting algorithms",
+const PLACEHOLDER_PROMPTS = [
+  "A complex neural network architecture flowchart using TikZ...",
+  "An IEEE conference 2-column table comparing machine learning models...",
+  "A high-quality academic graph showing training loss over 100 epochs...",
+  "A flowchart showing the compilation process of a LaTeX document...",
+  "An NLP pipeline for text classification using bagofwords and SVM...",
 ];
 
 const LatexLogo = () => (
@@ -24,6 +25,37 @@ const Index = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [placeholderText, setPlaceholderText] = useState("");
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    const currentPrompt = PLACEHOLDER_PROMPTS[promptIndex];
+
+    if (isDeleting) {
+      if (placeholderText.length > 0) {
+        timeout = setTimeout(() => {
+          setPlaceholderText(currentPrompt.substring(0, placeholderText.length - 1));
+        }, 25);
+      } else {
+        setIsDeleting(false);
+        setPromptIndex((prev) => (prev + 1) % PLACEHOLDER_PROMPTS.length);
+      }
+    } else {
+      if (placeholderText.length < currentPrompt.length) {
+        timeout = setTimeout(() => {
+          setPlaceholderText(currentPrompt.substring(0, placeholderText.length + 1));
+        }, 50);
+      } else {
+        timeout = setTimeout(() => {
+          setIsDeleting(true);
+        }, 2500);
+      }
+    }
+
+    return () => clearTimeout(timeout);
+  }, [placeholderText, isDeleting, promptIndex]);
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
@@ -136,7 +168,7 @@ ${body}
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g. A flowchart showing user authentication flow with login, verification, and dashboard steps..."
+            placeholder={`e.g. ${placeholderText}|`}
             className="w-full bg-transparent px-4 py-4 text-foreground font-heading text-base placeholder:text-muted-foreground/60 focus:outline-none resize-none min-h-[120px]"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate();
@@ -166,20 +198,24 @@ ${body}
         </div>
       </section>
 
-      {/* Examples */}
+      {/* Secondary Features */}
       <section className="max-w-5xl mx-auto px-6 pb-8">
-        <div className="flex flex-wrap gap-2">
-          {EXAMPLES.map((ex) => (
-            <Button
-              key={ex}
-              variant="chip"
-              size="sm"
-              onClick={() => setInput(ex)}
-            >
-              {ex.length > 50 ? ex.slice(0, 50) + "…" : ex}
-            </Button>
-          ))}
-        </div>
+
+        {/* Minimal Workspace Link */}
+        <Link to="/workspace" className="block w-full mt-2">
+          <div className="bg-muted/30 border border-border hover:border-primary/50 transition-colors rounded-lg p-4 flex items-center justify-between group">
+            <div className="flex items-center gap-3">
+              <div className="bg-background p-2 rounded-md shadow-sm border border-border group-hover:border-primary/30 transition-colors">
+                <FileText className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-heading font-semibold text-sm">Need to format a full research paper?</p>
+                <p className="text-muted-foreground text-xs font-sans mt-0.5">Convert MS Word or notes into IEEE/ACM formats in the Full Paper Workspace.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-all transform group-hover:translate-x-1" />
+          </div>
+        </Link>
       </section>
 
       {/* Output */}
