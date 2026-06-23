@@ -1,3 +1,5 @@
+import { createCompletion } from "./openrouter-client.js";
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -11,20 +13,10 @@ export default async function handler(req, res) {
     }
 
     try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://texlab.ai",
-                "X-Title": "teXlab",
-            },
-            body: JSON.stringify({
-                model: "google/gemini-2.0-flash-001",
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are an expert LaTeX typesetter. 
+        const content = await createCompletion(apiKey, [
+            {
+                role: "system",
+                content: `You are an expert LaTeX typesetter. 
 Your job is to convert the user's raw text/document drafts into a COMPLETE, compilable LaTeX research paper in the ${format} style.
 Do NOT output ANY explanation or Markdown backticks (e.g., skip \`\`\`latex and \`\`\`).
 You MUST output ONLY valid LaTeX code starting exactly with \\documentclass and ending exactly with \\end{document}.
@@ -39,26 +31,16 @@ Always include standard necessary packages like \\usepackage{amsmath}, \\usepack
 Format the text professionally with appropriate \\section{}, \\subsection{}, and standard environments where applicable.
 If the user provides an abstract, wrap it in \\begin{abstract} ... \\end{abstract}.
 If the user provides a title, use \\title{} and \\maketitle.`
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ],
-                temperature: 0.2, // Slightly higher than 0.1 to allow structural interpretation
-            }),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            return res.status(response.status).json({ error: `API error: ${errorText}` });
-        }
-
-        const data = await response.json();
-        const content = data.choices[0].message.content.trim();
+            },
+            {
+                role: "user",
+                content: prompt
+            }
+        ], 0.2, 8192);
         return res.status(200).json({ content });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: 'Internal server error' });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return res.status(500).json({ error: message });
     }
 }

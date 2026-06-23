@@ -66,7 +66,8 @@ const Index = () => {
       setOutput(latex);
     } catch (error) {
       console.error(error);
-      toast.error("Failed to generate LaTeX. Please check your API key.");
+      const message = error instanceof Error ? error.message : "Failed to generate LaTeX.";
+      toast.error(message);
     } finally {
       setIsGenerating(false);
     }
@@ -102,6 +103,7 @@ const Index = () => {
 \\usepackage{booktabs}
 \\usepackage{multirow}
 \\usepackage{xcolor}
+\\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds, calc}
 \\pgfplotsset{compat=1.14}
 ${preamble}
 \\begin{document}

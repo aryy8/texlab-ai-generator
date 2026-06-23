@@ -38,7 +38,8 @@ const Workspace = () => {
             setOutput(cleanedLatex);
         } catch (error) {
             console.error(error);
-            toast.error("Failed to generate LaTeX paper. Please check your API key.");
+            const message = error instanceof Error ? error.message : "Failed to generate LaTeX paper.";
+            toast.error(message);
             setIsGenerating(false);
             setIsPreviewLoading(false);
         } finally {
