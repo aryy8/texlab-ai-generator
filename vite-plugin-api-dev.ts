@@ -46,6 +46,9 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
       if (env.OPEN_ROUTER_API) {
         process.env.OPEN_ROUTER_API = env.OPEN_ROUTER_API;
       }
+      if (env.OPENROUTER_MODEL) {
+        process.env.OPENROUTER_MODEL = env.OPENROUTER_MODEL;
+      }
 
       server.middlewares.use(async (req, res, next) => {
         const pathname = req.url?.split("?")[0];

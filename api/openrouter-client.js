@@ -1,4 +1,4 @@
-export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
+export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3-coder:free";
 
 const DEFAULT_TIKZ_LIBRARIES = [
     "arrows.meta",
@@ -62,7 +62,7 @@ export async function createCompletion(apiKey, messages, temperature, maxTokens 
             "X-Title": "teXlab",
         },
         body: JSON.stringify({
-            model: OPENROUTER_MODEL,
+            model: process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
             messages,
             temperature,
             max_tokens: maxTokens,
