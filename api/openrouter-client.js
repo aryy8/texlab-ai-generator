@@ -1,4 +1,10 @@
-export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3-coder:free";
+export const DEFAULT_OPENROUTER_MODELS = [
+    "google/gemini-2.5-flash",
+    "openai/gpt-5-mini",
+    "openai/gpt-4.1-mini",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.5-flash-lite",
+];
 
 const DEFAULT_TIKZ_LIBRARIES = [
     "arrows.meta",
@@ -52,7 +58,34 @@ function normalizeLatex(content) {
     return `\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}\n${latex}`;
 }
 
-export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096) {
+function getConfiguredModels() {
+    if (!process.env.OPENROUTER_MODEL) {
+        return DEFAULT_OPENROUTER_MODELS;
+    }
+
+    return process.env.OPENROUTER_MODEL
+        .split(",")
+        .map((model) => model.trim())
+        .filter(Boolean);
+}
+
+function getFriendlyError(errorText) {
+    try {
+        const parsed = JSON.parse(errorText);
+        if (parsed.error?.code === 402) {
+            return "Insufficient OpenRouter credits. Add credits at https://openrouter.ai/settings/credits, or try a shorter prompt.";
+        }
+        if (parsed.error?.code === 429) {
+            return "OpenRouter free model is temporarily rate-limited. Please retry shortly, or add credits/BYOK in OpenRouter.";
+        }
+    } catch {
+        // Fall through to the raw API error below.
+    }
+
+    return `API error: ${errorText}`;
+}
+
+async function requestCompletion(apiKey, model, messages, temperature, maxTokens) {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -62,7 +95,7 @@ export async function createCompletion(apiKey, messages, temperature, maxTokens 
             "X-Title": "teXlab",
         },
         body: JSON.stringify({
-            model: process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+            model,
             messages,
             temperature,
             max_tokens: maxTokens,
@@ -71,21 +104,30 @@ export async function createCompletion(apiKey, messages, temperature, maxTokens 
 
     if (!response.ok) {
         const errorText = await response.text();
-        try {
-            const parsed = JSON.parse(errorText);
-            if (parsed.error?.code === 402) {
-                throw new Error(
-                    "Insufficient OpenRouter credits. Add credits at https://openrouter.ai/settings/credits, or try a shorter prompt."
-                );
-            }
-        } catch (parseError) {
-            if (parseError instanceof Error && parseError.message.startsWith("Insufficient")) {
-                throw parseError;
-            }
-        }
-        throw new Error(`API error: ${errorText}`);
+        return { ok: false, status: response.status, error: getFriendlyError(errorText) };
     }
 
     const data = await response.json();
-    return normalizeLatex(data.choices[0].message.content);
+    return { ok: true, content: normalizeLatex(data.choices[0].message.content) };
+}
+
+export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096) {
+    const models = getConfiguredModels();
+    let lastError = "API error: no model configured.";
+
+    for (const model of models) {
+        const result = await requestCompletion(apiKey, model, messages, temperature, maxTokens);
+
+        if (result.ok) {
+            return result.content;
+        }
+
+        lastError = result.error;
+
+        if (result.status !== 429) {
+            break;
+        }
+    }
+
+    throw new Error(lastError);
 }
