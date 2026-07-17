@@ -169,6 +169,7 @@ ${body}
           </div>
           <textarea
             value={input}
+            maxLength={4000}
             onChange={(e) => setInput(e.target.value)}
             placeholder={`e.g. ${placeholderText}|`}
             className="w-full bg-transparent px-4 py-4 text-foreground font-heading text-base placeholder:text-muted-foreground/60 focus:outline-none resize-none min-h-[120px]"
@@ -278,7 +279,9 @@ ${body}
                     src={getPreviewUrl(output)}
                     className={`w-full h-full border-0 transition-opacity duration-300 ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
                     title="LaTeX Preview"
+                    referrerPolicy="no-referrer"
                     onLoad={() => setIsPreviewLoading(false)}
+                    onError={() => setIsPreviewLoading(false)}
                   />
                 )}
               </div>

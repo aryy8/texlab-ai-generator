@@ -4,7 +4,12 @@ import generateLatex from "./api/generate-latex.js";
 import generatePaper from "./api/generate-paper.js";
 
 type ApiHandler = (
-  req: { method?: string; body?: unknown },
+  req: {
+    method?: string;
+    body?: unknown;
+    headers?: IncomingMessage["headers"];
+    socket?: { remoteAddress?: string };
+  },
   res: { status: (code: number) => { json: (body: unknown) => void } },
 ) => Promise<unknown>;
 
@@ -61,7 +66,15 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
         try {
           const body = await readBody(req);
           const parsedBody = body ? JSON.parse(body) : {};
-          await handler({ method: req.method, body: parsedBody }, createMockRes(res));
+          await handler(
+            {
+              method: req.method,
+              body: parsedBody,
+              headers: req.headers,
+              socket: { remoteAddress: req.socket.remoteAddress },
+            },
+            createMockRes(res),
+          );
         } catch (error) {
           console.error(error);
           res.statusCode = 500;

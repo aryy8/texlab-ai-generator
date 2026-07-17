@@ -37,11 +37,15 @@ teXlab is a minimal, fast, and precise tool that converts natural language descr
    ```
 
 4. Start the development server:
-   To run both the frontend and the secure backend API locally, use the Vercel CLI:
+   ```bash
+   npm run dev
+   ```
+   This runs the frontend and local `/api/*` handlers via `vite-plugin-api-dev.ts`.
+
+   For production-like serverless routing, you can also use:
    ```bash
    npx vercel dev
    ```
-   *Alternately, you can run `npm run dev`, but you will need to host the API endpoint separately.*
 
 ## Tech Stack
 

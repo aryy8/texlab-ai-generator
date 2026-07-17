@@ -128,6 +128,7 @@ const Workspace = () => {
                     <div className="flex-1 p-4 flex flex-col min-h-0">
                         <textarea
                             value={input}
+                            maxLength={32000}
                             onChange={(e) => setInput(e.target.value)}
                             placeholder="Paste your raw text or rough draft here (e.g. Title, Abstract, Introduction, Methods, ...)"
                             className="flex-1 w-full bg-transparent text-foreground font-sans text-sm placeholder:text-muted-foreground/60 focus:outline-none resize-none leading-relaxed"
@@ -233,6 +234,7 @@ const Workspace = () => {
                                     src={getPreviewUrl(output)}
                                     className={`absolute inset-0 w-full h-full border-0 transition-opacity duration-500 ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
                                     title="LaTeX Preview"
+                                    referrerPolicy="no-referrer"
                                     onLoad={() => setIsPreviewLoading(false)}
                                     onError={() => setIsPreviewLoading(false)}
                                 />

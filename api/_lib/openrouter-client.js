@@ -6,6 +6,8 @@ export const DEFAULT_OPENROUTER_MODELS = [
     "google/gemini-2.5-flash-lite",
 ];
 
+const REQUEST_TIMEOUT_MS = 60_000;
+
 const DEFAULT_TIKZ_LIBRARIES = [
     "arrows.meta",
     "positioning",
@@ -69,51 +71,64 @@ function getConfiguredModels() {
         .filter(Boolean);
 }
 
-function getFriendlyError(errorText) {
-    try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error?.code === 402) {
-            return "Insufficient OpenRouter credits. Add credits at https://openrouter.ai/settings/credits, or try a shorter prompt.";
-        }
-        if (parsed.error?.code === 429) {
-            return "OpenRouter free model is temporarily rate-limited. Please retry shortly, or add credits/BYOK in OpenRouter.";
-        }
-    } catch {
-        // Fall through to the raw API error below.
+// Raw upstream error bodies contain account identifiers and internal details,
+// so they are logged server-side and never forwarded to the browser.
+function getClientSafeError(status) {
+    if (status === 402) {
+        return "The AI provider rejected the request due to insufficient credits. Please try again later.";
     }
-
-    return `API error: ${errorText}`;
+    if (status === 429) {
+        return "The AI provider is rate-limiting requests. Please try again in a moment.";
+    }
+    if (status === 401 || status === 403) {
+        return "The server is not authorized with the AI provider. Please contact the site owner.";
+    }
+    return "The AI provider returned an error. Please try again.";
 }
 
 async function requestCompletion(apiKey, model, messages, temperature, maxTokens) {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://texlab.ai",
-            "X-Title": "teXlab",
-        },
-        body: JSON.stringify({
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-        }),
-    });
+    let response;
+    try {
+        response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://texlab.ai",
+                "X-Title": "teXlab",
+            },
+            body: JSON.stringify({
+                model,
+                messages,
+                temperature,
+                max_tokens: maxTokens,
+            }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+    } catch (error) {
+        console.error(`OpenRouter request failed for ${model}:`, error);
+        return { ok: false, status: 0, error: "The AI provider did not respond in time. Please try again." };
+    }
 
     if (!response.ok) {
         const errorText = await response.text();
-        return { ok: false, status: response.status, error: getFriendlyError(errorText) };
+        console.error(`OpenRouter ${response.status} for ${model}:`, errorText);
+        return { ok: false, status: response.status, error: getClientSafeError(response.status) };
     }
 
     const data = await response.json();
-    return { ok: true, content: normalizeLatex(data.choices[0].message.content) };
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) {
+        console.error(`OpenRouter returned empty/malformed response for ${model}`);
+        return { ok: false, status: 502, error: "The AI provider returned an empty response. Please try again." };
+    }
+
+    return { ok: true, content: normalizeLatex(content) };
 }
 
 export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096) {
     const models = getConfiguredModels();
-    let lastError = "API error: no model configured.";
+    let lastError = "No AI model is configured on the server.";
 
     for (const model of models) {
         const result = await requestCompletion(apiKey, model, messages, temperature, maxTokens);
@@ -124,7 +139,9 @@ export async function createCompletion(apiKey, messages, temperature, maxTokens 
 
         lastError = result.error;
 
-        if (result.status !== 429) {
+        // Only rate limiting and timeouts are worth retrying on another model;
+        // auth/billing failures would fail identically everywhere.
+        if (result.status !== 429 && result.status !== 0) {
             break;
         }
     }
