@@ -1,10 +1,24 @@
+// Paid models first for quality/latency; best current free models as a
+// zero-cost fallback when the paid ones are rate-limited or time out.
+// Override the whole list with OPENROUTER_MODEL (comma-separated).
 export const DEFAULT_OPENROUTER_MODELS = [
     "google/gemini-2.5-flash",
     "openai/gpt-5-mini",
     "openai/gpt-4.1-mini",
-    "openai/gpt-4o-mini",
-    "google/gemini-2.5-flash-lite",
+    "moonshotai/kimi-k2.6:free",
+    "openai/gpt-oss-120b:free",
+    "qwen/qwen3-coder:free",
 ];
+
+// Models that accept image inputs. Used to filter the fallback list when the
+// request includes image references.
+const VISION_MODELS = new Set([
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash-lite",
+    "openai/gpt-5-mini",
+    "openai/gpt-4.1-mini",
+    "openai/gpt-4o-mini",
+]);
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -126,8 +140,16 @@ async function requestCompletion(apiKey, model, messages, temperature, maxTokens
     return { ok: true, content: normalizeLatex(content) };
 }
 
-export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096) {
-    const models = getConfiguredModels();
+export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096, options = {}) {
+    let models = getConfiguredModels();
+
+    if (options.requiresVision) {
+        models = models.filter((model) => VISION_MODELS.has(model));
+        if (models.length === 0) {
+            throw new Error("Image references need a vision-capable model, but none is configured.");
+        }
+    }
+
     let lastError = "No AI model is configured on the server.";
 
     for (const model of models) {

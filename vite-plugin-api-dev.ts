@@ -2,6 +2,14 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { Plugin, ViteDevServer } from "vite";
 import generateLatex from "./api/generate-latex.js";
 import generatePaper from "./api/generate-paper.js";
+import compileLatex from "./api/compile-latex.js";
+
+type ApiRes = {
+  status: (code: number) => ApiRes;
+  json: (body: unknown) => void;
+  send: (body: string | Buffer) => void;
+  setHeader: (name: string, value: string) => void;
+};
 
 type ApiHandler = (
   req: {
@@ -10,7 +18,7 @@ type ApiHandler = (
     headers?: IncomingMessage["headers"];
     socket?: { remoteAddress?: string };
   },
-  res: { status: (code: number) => { json: (body: unknown) => void } },
+  res: ApiRes,
 ) => Promise<unknown>;
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -22,26 +30,40 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-function createMockRes(serverRes: ServerResponse) {
+function createMockRes(serverRes: ServerResponse): ApiRes {
   let statusCode = 200;
+  let ended = false;
 
-  return {
+  const apiRes: ApiRes = {
     status(code: number) {
       statusCode = code;
-      return {
-        json(body: unknown) {
-          serverRes.statusCode = statusCode;
-          serverRes.setHeader("Content-Type", "application/json");
-          serverRes.end(JSON.stringify(body));
-        },
-      };
+      return apiRes;
+    },
+    setHeader(name: string, value: string) {
+      if (!ended) serverRes.setHeader(name, value);
+    },
+    json(body: unknown) {
+      if (ended) return;
+      ended = true;
+      serverRes.statusCode = statusCode;
+      serverRes.setHeader("Content-Type", "application/json");
+      serverRes.end(JSON.stringify(body));
+    },
+    send(body: string | Buffer) {
+      if (ended) return;
+      ended = true;
+      serverRes.statusCode = statusCode;
+      serverRes.end(body);
     },
   };
+
+  return apiRes;
 }
 
 const routes: Record<string, ApiHandler> = {
   "/api/generate-latex": generateLatex as ApiHandler,
   "/api/generate-paper": generatePaper as ApiHandler,
+  "/api/compile-latex": compileLatex as ApiHandler,
 };
 
 export function apiDevPlugin(env: Record<string, string>): Plugin {

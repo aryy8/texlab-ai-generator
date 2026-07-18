@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, ArrowRight, Sparkles, FileText, Download, Code, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generatePaperLaTeX } from "@/lib/openrouter";
+import { compileLatex } from "@/lib/latex-compiler";
 
 const FORMATS = [
     { id: "ieee", name: "IEEE Conference" },
@@ -24,13 +25,15 @@ const Workspace = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [copied, setCopied] = useState(false);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const compileAbortRef = useRef<AbortController | null>(null);
     const [selectedFormat, setSelectedFormat] = useState(FORMATS[0].id);
     const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
 
     const handleGenerate = async () => {
         if (!input.trim()) return;
         setIsGenerating(true);
-        setIsPreviewLoading(true);
         try {
             const rawLatex = await generatePaperLaTeX(input, selectedFormat);
             // Clean up markdown code blocks to ensure it starts with \documentclass
@@ -40,22 +43,50 @@ const Workspace = () => {
             console.error(error);
             const message = error instanceof Error ? error.message : "Failed to generate LaTeX paper.";
             toast.error(message);
-            setIsGenerating(false);
-            setIsPreviewLoading(false);
         } finally {
             setIsGenerating(false);
         }
     };
 
+    useEffect(() => {
+        if (!output) return;
+
+        compileAbortRef.current?.abort();
+        const controller = new AbortController();
+        compileAbortRef.current = controller;
+
+        setIsPreviewLoading(true);
+        setPreviewError(null);
+
+        compileLatex(output, controller.signal)
+            .then((result) => {
+                if (controller.signal.aborted) return;
+                setPreviewUrl((previous) => {
+                    if (previous) URL.revokeObjectURL(previous);
+                    return result.status === "success" ? result.pdfUrl : null;
+                });
+                setPreviewError(result.status === "error" ? result.log : null);
+            })
+            .catch((error) => {
+                if (controller.signal.aborted) return;
+                console.error(error);
+                setPreviewError(
+                    error instanceof Error
+                        ? error.message
+                        : "Preview service unreachable. Check your connection and try again.",
+                );
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setIsPreviewLoading(false);
+            });
+
+        return () => controller.abort();
+    }, [output]);
+
     const handleCopy = () => {
         navigator.clipboard.writeText(output);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-    };
-
-    const getPreviewUrl = (latex: string) => {
-        const encoded = encodeURIComponent(latex);
-        return `https://latexonline.cc/compile?text=${encoded}`;
     };
 
     return (
@@ -116,7 +147,7 @@ const Workspace = () => {
                         <select
                             value={selectedFormat}
                             onChange={(e) => setSelectedFormat(e.target.value)}
-                            className="bg-transparent border border-border rounded px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="bg-transparent border border-border rounded px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                         >
                             {FORMATS.map((f) => (
                                 <option key={f.id} value={f.id}>
@@ -216,27 +247,36 @@ const Workspace = () => {
                                 <div className="flex items-center justify-center">
                                     <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                                 </div>
-                                <span className="animate-pulse tracking-widest uppercase text-xs font-semibold text-primary">Compiling PDF Engine...</span>
+                                <span className="animate-pulse tracking-widest uppercase text-xs font-semibold text-primary">Compiling PDF...</span>
                                 <span className="text-[10px] opacity-70 mb-2">This might take a moment for large documents</span>
+                            </div>
+                        )}
 
-                                <div className="mt-4 p-4 border border-orange-200 bg-orange-50 rounded-md max-w-sm text-center">
-                                    <p className="text-xs text-orange-800 font-sans">
-                                        <strong>Having trouble previewing?</strong><br />
-                                        Very large documents might fail to compile in this live preview. Switch to the <strong>Code</strong> tab to download or copy the raw .tex file.
+                        {previewError && !isPreviewLoading && !isGenerating && viewMode === 'preview' && (
+                            <div className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-white">
+                                <div className="border-b-2 border-destructive/60 bg-destructive/10 px-4 py-2">
+                                    <span className="font-mono text-xs font-semibold uppercase tracking-widest text-destructive">
+                                        Compilation failed
+                                    </span>
+                                </div>
+                                <pre className="flex-1 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                                    {previewError}
+                                </pre>
+                                <div className="border-t border-border px-4 py-2">
+                                    <p className="font-mono text-[11px] text-muted-foreground">
+                                        Tip: try converting again, or switch to the Code tab to download the .tex and fix it manually.
                                     </p>
                                 </div>
                             </div>
                         )}
 
-                        {output && viewMode === 'preview' && (
+                        {previewUrl && !previewError && viewMode === 'preview' && (
                             <div className="flex-1 relative">
                                 <iframe
-                                    src={getPreviewUrl(output)}
+                                    src={`${previewUrl}#view=FitH&toolbar=0`}
                                     className={`absolute inset-0 w-full h-full border-0 transition-opacity duration-500 ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
                                     title="LaTeX Preview"
                                     referrerPolicy="no-referrer"
-                                    onLoad={() => setIsPreviewLoading(false)}
-                                    onError={() => setIsPreviewLoading(false)}
                                 />
                             </div>
                         )}
