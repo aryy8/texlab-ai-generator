@@ -162,6 +162,97 @@
     margin-right: -0.08em;
   }
 
+  /* --- Loading states ------------------------------------------------- */
+
+  /* Diagonal sheen sweeping over the whole code skeleton (LinkedIn/ChatGPT style). */
+  .skeleton-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      hsl(var(--background) / 0.7) 50%,
+      transparent 70%
+    );
+    animation: skeleton-sheen-sweep 1.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes skeleton-sheen-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Code skeleton lines type themselves in one-by-one, then stay. */
+  .skeleton-line {
+    opacity: 0;
+    transform: translateY(2px);
+    animation: skeleton-line-in 0.45s ease-out forwards;
+  }
+
+  @keyframes skeleton-line-in {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .skeleton-caret {
+    animation: skeleton-caret-blink 1s step-end infinite;
+  }
+
+  @keyframes skeleton-caret-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* Gemini-style shimmer sweeping through the letters of the stage label. */
+  .text-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted-foreground)) 0%,
+      hsl(var(--muted-foreground)) 38%,
+      hsl(var(--primary)) 50%,
+      hsl(var(--muted-foreground)) 62%,
+      hsl(var(--muted-foreground)) 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shimmer-sweep 2.2s linear infinite;
+  }
+
+  @keyframes text-shimmer-sweep {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
+  /* Blueprint wireframe strokes draw themselves in, hold, then redraw.
+     Paths must set pathLength={100} so one dash value fits every shape. */
+  .blueprint-path {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: blueprint-draw 3.2s ease-in-out infinite alternate;
+  }
+
+  @keyframes blueprint-draw {
+    35% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+
   .checker-bg {
     background-image:
       linear-gradient(45deg, hsl(var(--checker-color)) 25%, transparent 25%),

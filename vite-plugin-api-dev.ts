@@ -70,11 +70,10 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
   return {
     name: "api-dev",
     configureServer(server: ViteDevServer) {
-      if (env.OPEN_ROUTER_API) {
-        process.env.OPEN_ROUTER_API = env.OPEN_ROUTER_API;
-      }
-      if (env.OPENROUTER_MODEL) {
-        process.env.OPENROUTER_MODEL = env.OPENROUTER_MODEL;
+      for (const key of ["OPEN_ROUTER_API", "OPENROUTER_MODEL", "OPENROUTER_TIER"]) {
+        if (env[key]) {
+          process.env[key] = env[key];
+        }
       }
 
       server.middlewares.use(async (req, res, next) => {

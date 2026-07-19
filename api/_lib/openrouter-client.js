@@ -1,7 +1,10 @@
-// Paid models first for quality/latency; best current free models as a
-// zero-cost fallback when the paid ones are rate-limited or time out.
-// Override the whole list with OPENROUTER_MODEL (comma-separated).
-export const DEFAULT_OPENROUTER_MODELS = [
+// Two model lists, selected by OPENROUTER_TIER:
+// - "paid": quality-first paid models, free models as a safety net. Use this
+//   where the OpenRouter key has credits (e.g. local development).
+// - anything else (default): free models only, so a credit-less key (e.g. the
+//   production deployment) never wastes a round-trip on 402 responses.
+// OPENROUTER_MODEL (comma-separated) overrides whichever list is active.
+export const PAID_OPENROUTER_MODELS = [
     "anthropic/claude-sonnet-5",
     "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash",
@@ -10,6 +13,15 @@ export const DEFAULT_OPENROUTER_MODELS = [
     "qwen/qwen3-next-80b-a3b-instruct:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "meta-llama/llama-3.3-70b-instruct:free",
+];
+
+export const FREE_OPENROUTER_MODELS = [
+    "qwen/qwen3-coder:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "openai/gpt-oss-20b:free",
 ];
 
 // Models that accept image inputs. Used to filter the fallback list when the
@@ -22,6 +34,9 @@ const VISION_MODELS = new Set([
     "openai/gpt-5-mini",
     "openai/gpt-4.1-mini",
     "openai/gpt-4o-mini",
+    // Free-tier vision fallbacks.
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-nano-12b-v2-vl:free",
 ]);
 
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -79,14 +94,16 @@ function normalizeLatex(content) {
 }
 
 function getConfiguredModels() {
-    if (!process.env.OPENROUTER_MODEL) {
-        return DEFAULT_OPENROUTER_MODELS;
+    if (process.env.OPENROUTER_MODEL) {
+        return process.env.OPENROUTER_MODEL
+            .split(",")
+            .map((model) => model.trim())
+            .filter(Boolean);
     }
 
-    return process.env.OPENROUTER_MODEL
-        .split(",")
-        .map((model) => model.trim())
-        .filter(Boolean);
+    return process.env.OPENROUTER_TIER === "paid"
+        ? PAID_OPENROUTER_MODELS
+        : FREE_OPENROUTER_MODELS;
 }
 
 // Raw upstream error bodies contain account identifiers and internal details,

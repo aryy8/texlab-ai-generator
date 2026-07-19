@@ -13,6 +13,7 @@ import {
 } from "@/lib/openrouter";
 import { compileLatex, type CompileResult } from "@/lib/latex-compiler";
 import { detectFromPrompt } from "@/lib/detect";
+import { pdfUrlToPngDataUrl } from "@/lib/pdf-preview";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,6 +42,10 @@ import {
   Table as TableIcon,
   Sigma,
   LineChart,
+  GitBranch,
+  Loader2,
+  CircleX,
+  TriangleAlert,
 } from "lucide-react";
 
 interface LatexVersion {
@@ -147,6 +152,46 @@ const GENERATION_STAGES = [
   "Almost there...",
 ];
 
+// Skeleton shaped like a real LaTeX document: indent levels and tinted
+// segments (command / argument / plain text) instead of uniform gray bars.
+type SkeletonTone = "cmd" | "arg" | "text";
+const CODE_SKELETON_LINES: Array<{ indent: number; segments: Array<[SkeletonTone, number]> } | null> = [
+  { indent: 0, segments: [["cmd", 26], ["arg", 30]] },
+  { indent: 0, segments: [["cmd", 20], ["arg", 34]] },
+  { indent: 0, segments: [["cmd", 22], ["arg", 18]] },
+  null,
+  { indent: 0, segments: [["cmd", 28]] },
+  { indent: 1, segments: [["cmd", 30], ["text", 22]] },
+  { indent: 1, segments: [["cmd", 18], ["arg", 28]] },
+  { indent: 2, segments: [["cmd", 12], ["arg", 18], ["text", 26]] },
+  { indent: 2, segments: [["cmd", 12], ["arg", 24], ["text", 16]] },
+  { indent: 2, segments: [["cmd", 12], ["arg", 16], ["text", 30]] },
+  { indent: 2, segments: [["cmd", 14], ["arg", 20], ["text", 18]] },
+  null,
+  { indent: 2, segments: [["cmd", 14], ["text", 34]] },
+  { indent: 2, segments: [["cmd", 14], ["text", 24]] },
+  { indent: 2, segments: [["cmd", 10], ["arg", 22], ["text", 20]] },
+  { indent: 2, segments: [["cmd", 14], ["text", 28]] },
+  { indent: 3, segments: [["cmd", 10], ["text", 22]] },
+  { indent: 3, segments: [["cmd", 10], ["arg", 16], ["text", 18]] },
+  { indent: 2, segments: [["cmd", 16], ["text", 20]] },
+  null,
+  { indent: 2, segments: [["cmd", 12], ["arg", 26]] },
+  { indent: 2, segments: [["cmd", 12], ["arg", 18], ["text", 22]] },
+  { indent: 1, segments: [["cmd", 28]] },
+  { indent: 1, segments: [["cmd", 20], ["text", 16]] },
+  { indent: 0, segments: [["cmd", 24]] },
+  { indent: 0, segments: [["cmd", 18], ["arg", 20]] },
+  null,
+  { indent: 0, segments: [["cmd", 22]] },
+];
+
+const SKELETON_TONE_CLASS: Record<SkeletonTone, string> = {
+  cmd: "bg-primary/30",
+  arg: "bg-foreground/15",
+  text: "bg-muted",
+};
+
 const LatexLogo = () => (
   <span className="latex-logo">
     L<span className="a">A</span>T<span className="e">E</span>X
@@ -227,7 +272,11 @@ const Index = () => {
   const [documentFit, setDocumentFit] = useState<DocumentFit>("standalone");
   const [references, setReferences] = useState<Reference[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [cursorPos, setCursorPos] = useState({ ln: 1, col: 1 });
+  const [compileMs, setCompileMs] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachButtonRef = useRef<HTMLButtonElement | null>(null);
+  const describeCardRef = useRef<HTMLDivElement | null>(null);
   const dragDepthRef = useRef(0);
 
   useEffect(() => {
@@ -298,7 +347,84 @@ const Index = () => {
     return () => clearTimeout(handle);
   }, [input]);
 
-  const handleFiles = async (fileList: FileList | null) => {
+  // macOS-minimize style animation: a floating thumbnail of the attached file
+  // flies from the drop point into the paperclip button, squashing genie-like
+  // on the way. The reference chip is added only when the ghost "lands".
+  const flyReferenceToClip = (reference: Reference, origin: { x: number; y: number }, delay: number, onLand: () => void) => {
+    const target = attachButtonRef.current?.getBoundingClientRect();
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!target || reducedMotion || typeof document.body.animate !== "function") {
+      onLand();
+      return;
+    }
+
+    const size = 96;
+    const ghost = document.createElement("div");
+    ghost.style.cssText = [
+      "position:fixed",
+      `left:${origin.x - size / 2}px`,
+      `top:${origin.y - size / 2}px`,
+      `width:${size}px`,
+      `height:${size}px`,
+      "z-index:9999",
+      "pointer-events:none",
+      "display:flex",
+      "flex-direction:column",
+      "align-items:center",
+      "justify-content:center",
+      "gap:4px",
+      "overflow:hidden",
+      "border:1px solid rgba(15,23,42,.25)",
+      "background:#fff",
+      "border-radius:10px",
+      "box-shadow:0 16px 40px rgba(15,23,42,.3)",
+      "will-change:transform,opacity",
+    ].join(";");
+
+    if (reference.kind === "image") {
+      const img = document.createElement("img");
+      img.src = reference.content;
+      img.alt = "";
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      ghost.appendChild(img);
+    } else {
+      const label = document.createElement("span");
+      label.textContent = reference.name;
+      label.style.cssText =
+        "font-family:monospace;font-size:9px;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;padding:0 4px;";
+      const icon = document.createElement("span");
+      icon.textContent = "{ }";
+      icon.style.cssText = "font-family:monospace;font-size:20px;color:#0f172a;";
+      ghost.append(icon, label);
+    }
+    document.body.appendChild(ghost);
+
+    const dx = target.left + target.width / 2 - origin.x;
+    const dy = target.top + target.height / 2 - origin.y;
+    const bend = dx > 0 ? -10 : 10; // genie-style lean toward the travel direction
+
+    const animation = ghost.animate(
+      [
+        { transform: "translate(0px, 0px) scale(1, 1) skewY(0deg)", opacity: 1 },
+        { transform: `translate(${dx * 0.35}px, ${dy * 0.45}px) scale(0.72, 0.9) skewY(${bend * 0.5}deg)`, opacity: 0.95, offset: 0.4 },
+        { transform: `translate(${dx * 0.78}px, ${dy * 0.88}px) scale(0.3, 0.55) skewY(${bend}deg)`, opacity: 0.85, offset: 0.75 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.04, 0.08) skewY(0deg)`, opacity: 0.15 },
+      ],
+      { duration: 620, delay, easing: "cubic-bezier(0.55, 0.06, 0.35, 1)", fill: "forwards" },
+    );
+
+    animation.onfinish = () => {
+      ghost.remove();
+      // Little "caught it" pop on the paperclip.
+      attachButtonRef.current?.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.4)" }, { transform: "scale(1)" }],
+        { duration: 260, easing: "ease-out" },
+      );
+      onLand();
+    };
+  };
+
+  const handleFiles = async (fileList: FileList | null, origin?: { x: number; y: number }) => {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
     const slotsLeft = MAX_REFERENCES - references.length;
@@ -337,7 +463,19 @@ const Index = () => {
     }
 
     if (additions.length > 0) {
-      setReferences((prev) => [...prev, ...additions]);
+      // Without a drop point (file picker), launch from the card's center.
+      const card = describeCardRef.current?.getBoundingClientRect();
+      const from = origin ?? {
+        x: card ? card.left + card.width / 2 : window.innerWidth / 2,
+        y: card ? card.top + card.height / 2 : window.innerHeight / 2,
+      };
+      additions.forEach((addition, index) => {
+        flyReferenceToClip(addition, from, index * 110, () => {
+          setReferences((prev) =>
+            prev.length >= MAX_REFERENCES ? prev : [...prev, addition],
+          );
+        });
+      });
     }
     if (files.length > slotsLeft) {
       toast.info(`Only the first ${slotsLeft} file(s) were added (max ${MAX_REFERENCES}).`);
@@ -386,7 +524,21 @@ const Index = () => {
     if (!refineInput.trim() || !output) return;
     setIsRefining(true);
     try {
-      const latex = await refineLaTeX(refineInput, output, preferences, references);
+      // Attach a rasterized snapshot of the current preview so the vision
+      // model can see cropping / overflow / overlap, not just the source.
+      const refineRefs = [...references];
+      if (previewUrl && !previewError) {
+        const previewImage = await pdfUrlToPngDataUrl(previewUrl);
+        if (previewImage) {
+          refineRefs.push({
+            kind: "image",
+            name: "current-preview",
+            content: previewImage,
+          });
+        }
+      }
+
+      const latex = await refineLaTeX(refineInput, output, preferences, refineRefs);
       if (latex.trim() === output.trim()) {
         toast.info("The model returned unchanged code. Try describing the change more specifically, e.g. which nodes or labels to move.");
         return;
@@ -501,6 +653,7 @@ ${body}
     setPreviewStage("compiling");
     setPreviewError(null);
 
+    const startedAt = performance.now();
     const run = async () => {
       const result = await compileLatex(doc, controller.signal);
       if (controller.signal.aborted) return;
@@ -520,6 +673,9 @@ ${body}
       }
 
       compileCacheRef.current.set(doc, result);
+      if (result.status === "success") {
+        setCompileMs(performance.now() - startedAt);
+      }
       applyResult(result);
     };
 
@@ -558,10 +714,10 @@ ${body}
   }, [versions.length]);
 
   return (
-    <div className="min-h-screen checker-bg">
-      {/* Nav */}
-      <nav className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div className="flex min-h-screen flex-col checker-bg">
+      {/* Nav — floating pill */}
+      <nav className="sticky top-4 z-50 mx-auto mt-4 w-[min(61rem,calc(100%-3rem))] border border-foreground/30 bg-background/40 shadow-lg shadow-foreground/5 backdrop-blur-xl backdrop-saturate-150">
+        <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <span className="font-heading text-xl font-bold tracking-tighter">
               te<span className="font-mono">X</span>lab
@@ -588,8 +744,12 @@ ${body}
         </div>
       </nav>
 
+      {/* Grows to push the footer to the viewport bottom; block layout inside
+          so centered max-w sections keep their full width. */}
+      <main className="flex-1">
+
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 pt-20 pb-12">
+      <section className="max-w-5xl mx-auto px-6 pt-12 pb-8">
         <div className="max-w-2xl">
           <h1 className="font-heading text-5xl sm:text-6xl font-bold tracking-tighter leading-[0.9] mb-4">
             Natural language
@@ -597,7 +757,7 @@ ${body}
             to <LatexLogo />
           </h1>
           <p className="text-muted-foreground font-heading text-lg max-w-md">
-            Describe your diagram or table in plain English. Get production-ready LaTeX code instantly.
+            Describe your diagram or table in plain English. Get publication-ready LaTeX code instantly.
           </p>
         </div>
       </section>
@@ -605,6 +765,7 @@ ${body}
       {/* Input */}
       <section className="max-w-5xl mx-auto px-6 pb-6">
         <div
+          ref={describeCardRef}
           className={`relative bg-card border-2 transition-colors ${
             isDraggingOver ? "border-primary bg-primary/5" : "border-foreground"
           }`}
@@ -632,7 +793,7 @@ ${body}
             e.stopPropagation();
             dragDepthRef.current = 0;
             setIsDraggingOver(false);
-            handleFiles(e.dataTransfer.files);
+            handleFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY });
           }}
         >
           {isDraggingOver && (
@@ -658,32 +819,37 @@ ${body}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate();
             }}
+            onSelect={(e) => {
+              const before = e.currentTarget.value.slice(0, e.currentTarget.selectionStart ?? 0);
+              const lines = before.split("\n");
+              setCursorPos({ ln: lines.length, col: lines[lines.length - 1].length + 1 });
+            }}
           />
           {/* Attached references */}
           {references.length > 0 && (
-            <div className="flex flex-wrap gap-2 px-4 pt-3">
+            <div className="flex flex-wrap gap-1.5 px-4 pt-2">
               {references.map((reference, index) => (
                 <span
                   key={`${reference.name}-${index}`}
-                  className="flex items-center gap-2 border border-border bg-muted/40 px-2 py-1 font-mono text-xs"
+                  className="flex items-center gap-1.5 border border-border bg-muted/40 py-0.5 pl-1 pr-1.5 font-mono text-[10px] duration-300 animate-in fade-in zoom-in-50"
                 >
                   {reference.kind === "image" ? (
                     <img
                       src={reference.content}
                       alt=""
-                      className="h-6 w-6 rounded-sm border border-border object-cover"
+                      className="h-4 w-4 rounded-sm border border-border object-cover"
                     />
                   ) : (
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                    <FileText className="h-3 w-3 text-muted-foreground" />
                   )}
-                  <span className="max-w-[160px] truncate">{reference.name}</span>
+                  <span className="max-w-[56px] truncate">{reference.name}</span>
                   <button
                     type="button"
                     onClick={() => removeReference(index)}
                     aria-label={`Remove ${reference.name}`}
                     className="text-muted-foreground hover:text-foreground"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-3 w-3" />
                   </button>
                 </span>
               ))}
@@ -867,6 +1033,7 @@ ${body}
               }}
             />
             <Button
+              ref={attachButtonRef}
               type="button"
               variant="chip"
               size="sm"
@@ -909,26 +1076,6 @@ ${body}
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Secondary Features */}
-      <section className="max-w-5xl mx-auto px-6 pb-8">
-
-        {/* Minimal Workspace Link */}
-        <Link to="/workspace" className="block w-full mt-2">
-          <div className="bg-muted/30 border border-border hover:border-primary/50 transition-colors rounded-lg p-4 flex items-center justify-between group">
-            <div className="flex items-center gap-3">
-              <div className="bg-background p-2 rounded-md shadow-sm border border-border group-hover:border-primary/30 transition-colors">
-                <FileText className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="font-heading font-semibold text-sm">Need to format a full research paper?</p>
-                <p className="text-muted-foreground text-xs font-sans mt-0.5">Convert MS Word or notes into IEEE/ACM formats in the Full Paper Workspace.</p>
-              </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-all transform group-hover:translate-x-1" />
-          </div>
-        </Link>
       </section>
 
       {/* Output */}
@@ -982,14 +1129,37 @@ ${body}
                   <LatexCode code={output} />
                 </div>
               ) : (
-                <div className="flex-1 px-4 py-4 space-y-3" aria-hidden="true">
-                  {[92, 66, 80, 45, 72, 58, 85, 38, 62, 76].map((width, i) => (
+                <div className="skeleton-sheen relative flex-1 overflow-hidden px-4 py-4" aria-hidden="true">
+                  <div className="space-y-2.5">
+                    {CODE_SKELETON_LINES.map((line, i) => (
+                      <div
+                        key={i}
+                        className="skeleton-line flex h-3 items-center gap-1"
+                        style={{ animationDelay: `${i * 110}ms` }}
+                      >
+                        <span className="w-5 shrink-0 pr-2 text-right font-mono text-[10px] leading-none text-muted-foreground/40">
+                          {i + 1}
+                        </span>
+                        {line && <span style={{ width: `${line.indent * 5}%` }} />}
+                        {line?.segments.map(([tone, width], j) => (
+                          <span
+                            key={j}
+                            className={`h-3 ${SKELETON_TONE_CLASS[tone]}`}
+                            style={{ width: `${width}%` }}
+                          />
+                        ))}
+                      </div>
+                    ))}
                     <div
-                      key={i}
-                      className="h-3 bg-muted animate-pulse"
-                      style={{ width: `${width}%`, animationDelay: `${i * 120}ms` }}
-                    />
-                  ))}
+                      className="skeleton-line flex h-3 items-center gap-1"
+                      style={{ animationDelay: `${CODE_SKELETON_LINES.length * 110}ms` }}
+                    >
+                      <span className="w-5 shrink-0 pr-2 text-right font-mono text-[10px] leading-none text-muted-foreground/40">
+                        {CODE_SKELETON_LINES.length + 1}
+                      </span>
+                      <span className="skeleton-caret h-3.5 w-[7px] bg-primary" />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1016,9 +1186,25 @@ ${body}
               </div>
               <div className="flex-1 bg-white overflow-hidden flex items-center justify-center p-2 relative">
                 {(isGenerating || isRefining) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground font-mono text-sm gap-4 z-10 bg-white">
-                    <Sparkles className="w-5 h-5 animate-pulse text-primary" />
-                    <span key={stageIndex} className="text-xs font-semibold tracking-wide animate-in fade-in slide-in-from-bottom-1 duration-500">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground font-mono text-sm gap-5 z-10 bg-white">
+                    {/* Blueprint wireframe sketching itself in */}
+                    <svg
+                      viewBox="0 0 220 130"
+                      className="w-48 text-primary/70"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      aria-hidden="true"
+                    >
+                      <rect x="84" y="8" width="52" height="26" pathLength={100} className="blueprint-path" />
+                      <path d="M 110 34 L 110 56" pathLength={100} className="blueprint-path" style={{ animationDelay: "0.25s" }} />
+                      <path d="M 110 56 L 40 56 L 40 88" pathLength={100} className="blueprint-path" style={{ animationDelay: "0.45s" }} />
+                      <path d="M 110 56 L 180 56 L 180 88" pathLength={100} className="blueprint-path" style={{ animationDelay: "0.45s" }} />
+                      <rect x="14" y="88" width="52" height="26" pathLength={100} className="blueprint-path" style={{ animationDelay: "0.75s" }} />
+                      <rect x="154" y="88" width="52" height="26" pathLength={100} className="blueprint-path" style={{ animationDelay: "0.75s" }} />
+                      <path d="M 66 101 L 154 101" pathLength={100} className="blueprint-path" style={{ animationDelay: "1.05s" }} />
+                    </svg>
+                    <span key={stageIndex} className="text-shimmer text-xs font-semibold tracking-wide animate-in fade-in slide-in-from-bottom-1 duration-500">
                       {GENERATION_STAGES[stageIndex]}
                     </span>
                     <div className="flex gap-1.5">
@@ -1037,7 +1223,7 @@ ${body}
                     <div className="flex items-center justify-center">
                       <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                     </div>
-                    <span className="animate-pulse tracking-widest uppercase text-xs font-semibold">
+                    <span className="text-shimmer tracking-widest uppercase text-xs font-semibold">
                       {previewStage === "repairing" ? "Fixing compile errors..." : "Compiling preview..."}
                     </span>
                     {previewStage === "repairing" && (
@@ -1153,15 +1339,68 @@ ${body}
         </section>
       )}
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
-          <span className="text-xs font-mono text-muted-foreground">
-            teXlab © 2026
-          </span>
-          <span className="text-xs font-mono text-muted-foreground">
-            NLP → <LatexLogo />
-          </span>
+      </main>
+
+      {/* Footer — slim editor status bar (Overleaf / VSCode style) with live segments */}
+      <footer aria-label="Status bar" className="select-none bg-foreground font-mono text-[11px] text-background">
+        <div className="flex h-7 items-stretch justify-between overflow-hidden">
+          <div className="flex items-stretch">
+            <span className="flex items-center gap-1.5 bg-primary px-3 text-primary-foreground">
+              <GitBranch className="h-3 w-3" />
+              texlab/main
+            </span>
+            <span className="flex items-center gap-1.5 px-3 transition-colors hover:bg-background/15">
+              {isGenerating || isRefining ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  generating…
+                </>
+              ) : isPreviewLoading ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {previewStage === "repairing" ? "auto-repairing…" : "compiling…"}
+                </>
+              ) : previewError ? (
+                <>
+                  <CircleX className="h-3 w-3" />
+                  compile failed
+                </>
+              ) : previewUrl ? (
+                <>
+                  <Check className="h-3 w-3" />
+                  compiled{compileMs !== null ? ` in ${(compileMs / 1000).toFixed(1)}s` : ""}
+                </>
+              ) : (
+                <>
+                  <Check className="h-3 w-3" />
+                  ready
+                </>
+              )}
+            </span>
+            <span className="hidden items-center gap-2 px-3 transition-colors hover:bg-background/15 sm:flex">
+              <span className="flex items-center gap-1">
+                <CircleX className="h-3 w-3" />
+                {previewError ? 1 : 0}
+              </span>
+              <span className="flex items-center gap-1">
+                <TriangleAlert className="h-3 w-3" />0
+              </span>
+            </span>
+          </div>
+          <div className="flex items-stretch">
+            <span className="hidden items-center px-3 transition-colors hover:bg-background/15 sm:flex">
+              Ln {cursorPos.ln}, Col {cursorPos.col}
+            </span>
+            <span className="hidden items-center px-3 transition-colors hover:bg-background/15 md:flex">
+              UTF-8
+            </span>
+            <span className="flex items-center px-3 transition-colors hover:bg-background/15">
+              LaTeX
+            </span>
+            <span className="hidden items-center px-3 transition-colors hover:bg-background/15 md:flex">
+              pdfTeX 3.141592653
+            </span>
+          </div>
         </div>
       </footer>
     </div>
