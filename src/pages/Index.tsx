@@ -12,9 +12,16 @@ import {
   type Reference,
 } from "@/lib/openrouter";
 import { compileLatex, type CompileResult } from "@/lib/latex-compiler";
+import { detectFromPrompt } from "@/lib/detect";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { LatexCode } from "@/components/LatexCode";
 import { Link } from "react-router-dom";
 import {
@@ -29,6 +36,7 @@ import {
   Paperclip,
   X,
   ChevronDown,
+  Maximize2,
   Workflow,
   Table as TableIcon,
   Sigma,
@@ -139,53 +147,6 @@ const GENERATION_STAGES = [
   "Almost there...",
 ];
 
-// Style-level detection: the first rule with a matching keyword wins, so more
-// specific styles are listed before generic fallbacks within each type.
-const DETECTION_RULES: Array<{ type: OutputType; style: string; keywords: string[] }> = [
-  { type: "diagram", style: "neural-network", keywords: ["neural network", "neural net", "cnn", "convolutional", "rnn", "lstm", "gru", "transformer", "perceptron", "mlp", "deep learning", "hidden layer", "activation layer", "softmax", "backpropagation", "propagation"] },
-  { type: "diagram", style: "architecture", keywords: ["architecture", "system design", "block diagram", "microservice", "system components", "infrastructure", "data flow"] },
-  { type: "diagram", style: "timeline", keywords: ["timeline", "roadmap", "gantt", "chronology", "milestone"] },
-  { type: "diagram", style: "hierarchy", keywords: ["hierarchy", "tree diagram", "org chart", "organizational chart", "taxonomy", "hierarchical", "parent-child"] },
-  { type: "diagram", style: "flowchart", keywords: ["flowchart", "flow chart", "flow diagram", "process flow", "workflow", "pipeline", "decision tree", "procedure", "process diagram"] },
-  { type: "table", style: "ablation", keywords: ["ablation"] },
-  { type: "table", style: "comparison", keywords: ["comparison table", "comparison", "compare", "versus", " vs "] },
-  { type: "table", style: "results", keywords: ["results table", "results", "result", "benchmark", "performance", "metrics", "accuracy", "scores", "epochs"] },
-  { type: "table", style: "compact", keywords: ["compact table"] },
-  { type: "table", style: "academic", keywords: ["table", "tabular", "spreadsheet"] },
-  { type: "equation", style: "derivation", keywords: ["derivation", "derive", "step by step", "proof"] },
-  { type: "equation", style: "cases", keywords: ["piecewise", "cases", "conditional function"] },
-  { type: "equation", style: "boxed", keywords: ["boxed", "final result", "highlight the result"] },
-  { type: "equation", style: "aligned", keywords: ["equation", "formula", "integral", "derivative", "theorem", "system of equations", "math expression"] },
-  { type: "plot", style: "bar", keywords: ["bar chart", "bar graph", "bar plot", "histogram"] },
-  { type: "plot", style: "scatter", keywords: ["scatter", "scatterplot"] },
-  { type: "plot", style: "multi-series", keywords: ["multi-series", "multiple series", "multiple curves", "compare curves"] },
-  { type: "plot", style: "line", keywords: ["line chart", "line graph", "line plot", "loss curve", "training loss", "over epochs", "time series", "trend", "curve", "plot", "chart", "axis"] },
-];
-
-// Type-level fallback: if no specific style matched, still pick the output type
-// from a bare keyword (e.g. "create a diagram for ...") and leave style empty.
-const TYPE_KEYWORDS: Array<{ type: OutputType; keywords: string[] }> = [
-  { type: "diagram", keywords: ["diagram", "flow", "pipeline", "workflow", "process", "architecture", "network", "schematic", "tree", "block"] },
-  { type: "table", keywords: ["table", "tabular", "spreadsheet", "matrix", "grid"] },
-  { type: "plot", keywords: ["plot", "chart", "histogram", "curve", "axis", "graph"] },
-  { type: "equation", keywords: ["equation", "formula", "math", "integral", "derivative", "theorem", "proof", "expression"] },
-];
-
-function detectFromPrompt(text: string): { type: OutputType | null; style: string | null } {
-  const haystack = ` ${text.toLowerCase()} `;
-  for (const rule of DETECTION_RULES) {
-    if (rule.keywords.some((keyword) => haystack.includes(keyword))) {
-      return { type: rule.type, style: rule.style };
-    }
-  }
-  for (const rule of TYPE_KEYWORDS) {
-    if (rule.keywords.some((keyword) => haystack.includes(keyword))) {
-      return { type: rule.type, style: null };
-    }
-  }
-  return { type: null, style: null };
-}
-
 const LatexLogo = () => (
   <span className="latex-logo">
     L<span className="a">A</span>T<span className="e">E</span>X
@@ -239,6 +200,7 @@ const Index = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewStage, setPreviewStage] = useState<"compiling" | "repairing">("compiling");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [refineInput, setRefineInput] = useState("");
   const [isRefining, setIsRefining] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
@@ -446,7 +408,7 @@ const Index = () => {
   const handleSwitchVersion = (index: number) => {
     if (index === activeVersion) return;
     // Cached compiles apply instantly and shouldn't trigger another repair.
-    repairAttemptsRef.current = 1;
+    repairAttemptsRef.current = 2;
     setActiveVersion(index);
   };
 
@@ -458,7 +420,7 @@ const Index = () => {
 
   const buildPreviewDocument = (latex: string) => {
     // 1. Remove markdown code blocks if present
-    let cleanedLatex = latex.replace(/```latex\n?/gi, '').replace(/```\n?/g, '').trim();
+    const cleanedLatex = latex.replace(/```latex\n?/gi, '').replace(/```\n?/g, '').trim();
 
     // 2. Extract preamble-only commands the LLM might generate
     const preambleRegex = /\\(usepackage|usetikzlibrary|pgfplotsset).*?(?:\{[^}]+\}|\[[^\]]+\])+/gi;
@@ -477,7 +439,8 @@ const Index = () => {
     body = body.replace(/\\begin\s*\{(figure|table)\*?\}(\[[^\]]*\])?/gi, '');
     body = body.replace(/\\end\s*\{(figure|table)\*?\}/gi, '');
     body = body.replace(/\\centering/gi, '');
-    body = body.replace(/\\caption\s*\{(?:[^{}]|\{[^{}]*\})*\}/gi, '');
+    // \caption may carry an optional short title and nested braces.
+    body = body.replace(/\\caption\s*\*?\s*(\[[^\]]*\])?\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}/gi, '');
     body = body.replace(/\\label\s*\{[^}]*\}/gi, '');
     body = body.trim();
 
@@ -542,9 +505,9 @@ ${body}
       const result = await compileLatex(doc, controller.signal);
       if (controller.signal.aborted) return;
 
-      if (result.status === "error" && repairAttemptsRef.current < 1) {
-        // One automatic repair round: send the error log back to the model,
-        // then let the effect re-run with the corrected code.
+      if (result.status === "error" && repairAttemptsRef.current < 2) {
+        // Up to two automatic repair rounds: send the error log back to the
+        // model, then let the effect re-run with the corrected code.
         repairAttemptsRef.current += 1;
         setPreviewStage("repairing");
         const repaired = await repairLaTeX(result.log, output, preferences);
@@ -1037,6 +1000,19 @@ ${body}
                 <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
                   Preview
                 </span>
+                {previewUrl && !previewError && !isPreviewLoading && !isGenerating && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewOpen(true)}
+                    className="h-7 gap-1.5 px-2 font-mono text-xs normal-case"
+                    title="Expand preview"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    Expand
+                  </Button>
+                )}
               </div>
               <div className="flex-1 bg-white overflow-hidden flex items-center justify-center p-2 relative">
                 {(isGenerating || isRefining) && (
@@ -1091,16 +1067,48 @@ ${body}
                 )}
 
                 {previewUrl && !previewError && (
-                  <iframe
-                    src={`${previewUrl}#view=FitH&toolbar=0`}
-                    className={`w-full h-full border-0 transition-opacity duration-300 ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
-                    title="LaTeX Preview"
-                    referrerPolicy="no-referrer"
-                  />
+                  <>
+                    <iframe
+                      src={`${previewUrl}#view=FitH&toolbar=0`}
+                      className={`w-full h-full border-0 transition-opacity duration-300 pointer-events-none ${(isGenerating || isPreviewLoading) ? 'opacity-0' : 'opacity-100'}`}
+                      title="LaTeX Preview"
+                      referrerPolicy="no-referrer"
+                    />
+                    {/* Transparent hit target — iframes swallow clicks, so this
+                        opens the lightbox when the user clicks the preview. */}
+                    {!isGenerating && !isPreviewLoading && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewOpen(true)}
+                        aria-label="Expand preview"
+                        className="absolute inset-0 z-[5] cursor-zoom-in bg-transparent transition-colors hover:bg-foreground/[0.03]"
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </div>
           </div>
+
+          <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+            <DialogContent className="flex h-[92vh] w-[min(96vw,1200px)] max-w-none flex-col gap-0 overflow-hidden rounded-none border-2 border-foreground p-0 sm:rounded-none">
+              <DialogHeader className="flex-row items-center justify-between space-y-0 border-b border-border bg-muted/50 px-4 py-2.5 pr-12 text-left">
+                <DialogTitle className="font-mono text-xs font-normal uppercase tracking-widest text-muted-foreground">
+                  Preview
+                </DialogTitle>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 bg-white p-3">
+                {previewUrl && (
+                  <iframe
+                    src={`${previewUrl}#view=Fit&toolbar=0`}
+                    className="h-full w-full border-0"
+                    title="LaTeX Preview (expanded)"
+                    referrerPolicy="no-referrer"
+                  />
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Refine bar */}
           {output && (

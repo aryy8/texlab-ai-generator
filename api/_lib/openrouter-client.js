@@ -2,17 +2,21 @@
 // zero-cost fallback when the paid ones are rate-limited or time out.
 // Override the whole list with OPENROUTER_MODEL (comma-separated).
 export const DEFAULT_OPENROUTER_MODELS = [
+    "anthropic/claude-sonnet-5",
+    "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash",
     "openai/gpt-5-mini",
-    "openai/gpt-4.1-mini",
-    "moonshotai/kimi-k2.6:free",
-    "openai/gpt-oss-120b:free",
     "qwen/qwen3-coder:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
 ];
 
 // Models that accept image inputs. Used to filter the fallback list when the
 // request includes image references.
 const VISION_MODELS = new Set([
+    "anthropic/claude-sonnet-5",
+    "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash",
     "google/gemini-2.5-flash-lite",
     "openai/gpt-5-mini",
@@ -127,6 +131,14 @@ async function requestCompletion(apiKey, model, messages, temperature, maxTokens
     if (!response.ok) {
         const errorText = await response.text();
         console.error(`OpenRouter ${response.status} for ${model}:`, errorText);
+        // Low-credit accounts get "can only afford N" 402s; retry once with
+        // the affordable token budget instead of failing the model outright.
+        if (response.status === 402) {
+            const affordable = Number(errorText.match(/can only afford (\d+)/)?.[1]);
+            if (Number.isFinite(affordable) && affordable >= 1200 && affordable < maxTokens) {
+                return requestCompletion(apiKey, model, messages, temperature, Math.floor(affordable * 0.9));
+            }
+        }
         return { ok: false, status: response.status, error: getClientSafeError(response.status) };
     }
 
@@ -161,9 +173,12 @@ export async function createCompletion(apiKey, messages, temperature, maxTokens 
 
         lastError = result.error;
 
-        // Only rate limiting and timeouts are worth retrying on another model;
-        // auth/billing failures would fail identically everywhere.
-        if (result.status !== 429 && result.status !== 0) {
+        // Advance to the next model on failures that are model-specific:
+        // 429 rate limit, 0 timeout, 402 out of credits (free fallbacks still
+        // work), 404 model removed, and 5xx provider outages. Auth failures
+        // (401/403) would fail identically everywhere, so stop immediately.
+        const retryable = [429, 0, 402, 404].includes(result.status) || result.status >= 500;
+        if (!retryable) {
             break;
         }
     }
