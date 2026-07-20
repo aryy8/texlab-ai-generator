@@ -716,7 +716,8 @@ ${body}
   return (
     <div className="flex min-h-screen flex-col checker-bg">
       {/* Nav — floating pill */}
-      <nav className="sticky top-4 z-50 mx-auto mt-4 w-[min(61rem,calc(100%-3rem))] border border-foreground/30 bg-background/40 shadow-lg shadow-foreground/5 backdrop-blur-xl backdrop-saturate-150">
+      {/* Width matches the code+preview grid (max-w-6xl minus px-6). */}
+      <nav className="sticky top-4 z-50 mx-auto mt-4 w-[min(69rem,calc(100%-3rem))] border border-foreground/30 bg-background/40 shadow-lg shadow-foreground/5 backdrop-blur-xl backdrop-saturate-150">
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <span className="font-heading text-xl font-bold tracking-tighter">
