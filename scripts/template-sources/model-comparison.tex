@@ -1,0 +1,19 @@
+\documentclass[border=8pt]{standalone}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{array}
+\begin{document}
+\resizebox{8.4cm}{!}{%
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Model} & \textbf{MNLI} & \textbf{QQP} & \textbf{QNLI} & \textbf{SST-2} \\
+\midrule
+BERT-base   & \textbf{84.6} & 91.3 & 91.8 & 93.5 \\
+GPT-3.5     & 83.1 & \textbf{92.0} & 90.4 & 92.8 \\
+T5-base     & 82.4 & 90.1 & \textbf{92.2} & \textbf{94.1} \\
+\bottomrule
+\end{tabular}%
+}
+\end{document}

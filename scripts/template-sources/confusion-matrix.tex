@@ -1,0 +1,24 @@
+\documentclass[border=10pt]{standalone}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\definecolor{cm0}{RGB}{239,246,255}
+\definecolor{cm1}{RGB}{191,219,254}
+\definecolor{cm2}{RGB}{96,165,250}
+\definecolor{cm3}{RGB}{30,64,175}
+\begin{document}
+\resizebox{8.4cm}{!}{%
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{True $\backslash$ Pred} & \textbf{Cat} & \textbf{Dog} & \textbf{Bird} & \textbf{Fish} \\
+\midrule
+Cat  & \cellcolor{cm3}\textcolor{white}{\textbf{842}} & \cellcolor{cm0}23 & \cellcolor{cm0}11 & \cellcolor{cm0}8 \\
+Dog  & \cellcolor{cm0}19 & \cellcolor{cm3}\textcolor{white}{\textbf{791}} & \cellcolor{cm0}14 & \cellcolor{cm0}12 \\
+Bird & \cellcolor{cm0}9  & \cellcolor{cm0}17 & \cellcolor{cm3}\textcolor{white}{\textbf{756}} & \cellcolor{cm0}22 \\
+Fish & \cellcolor{cm0}6  & \cellcolor{cm0}10 & \cellcolor{cm0}18 & \cellcolor{cm3}\textcolor{white}{\textbf{812}} \\
+\bottomrule
+\end{tabular}%
+}
+\end{document}

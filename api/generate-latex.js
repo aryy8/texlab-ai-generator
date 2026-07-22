@@ -1,4 +1,4 @@
-import { createCompletion } from "./_lib/openrouter-client.js";
+import { createCompletion, SELECTABLE_MODEL_IDS } from "./_lib/openrouter-client.js";
 import { checkRateLimit, validatePrompt, leaksSystemPrompt } from "./_lib/security.js";
 
 const MAX_PROMPT_LENGTH = 4000;
@@ -13,9 +13,9 @@ const OUTPUT_TYPES = {
 const STYLES = {
     diagram: {
         flowchart: "Use a clear top-to-bottom flowchart with consistent node shapes and orthogonal routing.",
-        architecture: "Use a system-architecture layout, NOT a linear flowchart: arrange components in a 2D grid of subsystem group boxes placed side by side and stacked, with parallel branches where they exist. Data flows between groups, not through one single vertical chain of nodes.",
+        architecture: "Use a system-architecture layout, NOT a linear flowchart: arrange components in a 2D grid of subsystem group boxes placed side by side and stacked, with parallel branches where they exist. Data flows between groups, not through one single vertical chain of nodes. Keep generous spacing between boxes and arrows; use short labels; never let text, nodes, or edge labels overlap.",
         "neural-network": "Use a neural-network layout with layers drawn as side-by-side columns (or stacked layer blocks), aligned nodes within each layer, and readable connections between adjacent layers; not a single vertical chain.",
-        timeline: "Use a chronological timeline with evenly spaced milestones.",
+        timeline: "Use a real roadmap/timeline layout, not floating badges: include a visible time axis, grouped phases or swimlanes, multi-step structure, and connectors or dependency arrows where relevant. Do not return 2-4 isolated boxes on empty canvas.",
         hierarchy: "Use a balanced tree or hierarchy with clear parent-child relationships.",
     },
     table: {
@@ -81,7 +81,7 @@ const DEFAULT_PREFERENCES = {
     density: "normal",
     aspectRatio: "auto",
     arrowStyle: "solid",
-    documentFit: "standalone",
+    documentFit: "column",
 };
 
 function resolvePreferences(value) {
@@ -97,7 +97,7 @@ function resolvePreferences(value) {
         density,
         aspectRatio = "auto",
         arrowStyle = "solid",
-        documentFit = "standalone",
+        documentFit = "column",
     } = preferences;
     const outputInstruction = OUTPUT_TYPES[outputType];
     const styleInstruction = STYLES[outputType]?.[style];
@@ -134,6 +134,16 @@ function resolvePreferences(value) {
         "- When Canvas is not 'auto', the Canvas geometry has ABSOLUTE priority: it overrides any 'side-by-side', 'columns', 'single row', or 'vertical chain' wording implied by the Style. Rearrange the same components to fit the Canvas shape.",
         "- If the user's description clearly asks for a different artifact type than the Output preference (e.g. the description says diagram but the preference says table), follow the user's description entirely: produce ONE artifact of the described type and ignore the conflicting Output/Style preferences. Never mix two artifact types in one output.",
     );
+    if (documentFit === "column") {
+        lines.push(
+            "- COLUMN FIT IS MANDATORY: the full artifact must fit within ~8.5cm width with nothing cropped on the right. Use p{...}/tabularx columns, \\resizebox{\\linewidth}{!}{...}, smaller fonts, or wrapped TikZ rows — never overflow.",
+        );
+    }
+    if (documentFit === "fullpage") {
+        lines.push(
+            "- FULL-WIDTH FIT IS MANDATORY: the artifact must fit within ~17cm (\\textwidth). Scale or reflow wide content; nothing may be cropped at the page edge.",
+        );
+    }
 
     return { instructions: lines.join("\n") };
 }
@@ -356,10 +366,14 @@ export default async function handler(req, res) {
         });
     }
 
-    const { prompt, preferences, mode = "generate", baseLatex, references } = req.body ?? {};
+    const { prompt, preferences, mode = "generate", baseLatex, references, model = "auto" } = req.body ?? {};
 
     if (!["generate", "refine", "repair"].includes(mode)) {
         return res.status(400).json({ error: "Invalid mode." });
+    }
+
+    if (model !== "auto" && (typeof model !== "string" || !SELECTABLE_MODEL_IDS.includes(model))) {
+        return res.status(400).json({ error: "Invalid model selection." });
     }
 
     const promptError = validatePrompt(prompt, mode === "repair" ? 20_000 : MAX_PROMPT_LENGTH);
@@ -405,7 +419,10 @@ export default async function handler(req, res) {
             baseLatex,
             instructions: resolvedPreferences.instructions,
             references: resolvedReferences,
-        }), temperature, 4096, { requiresVision: resolvedReferences.images.length > 0 });
+        }), temperature, 4096, {
+            requiresVision: resolvedReferences.images.length > 0,
+            model,
+        });
 
         if (leaksSystemPrompt(content, ["You are a LaTeX expert", "Security rules (highest priority"])) {
             return res.status(400).json({ error: "Request declined." });

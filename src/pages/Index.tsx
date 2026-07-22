@@ -14,6 +14,19 @@ import {
 import { compileLatex, type CompileResult } from "@/lib/latex-compiler";
 import { detectFromPrompt } from "@/lib/detect";
 import { pdfUrlToPngDataUrl } from "@/lib/pdf-preview";
+import {
+  buildPasteSnippet,
+  buildPreviewDocument,
+  fitBadgeLabel,
+} from "@/lib/figure-export";
+import { validateFigureFit, type FitStatus } from "@/lib/fit-validation";
+import { saveFigure, type StoredFigure } from "@/lib/figure-history";
+import { FIGURE_TEMPLATES } from "@/lib/templates";
+import { openInOverleaf, downloadFigureZip } from "@/lib/overleaf-export";
+import { FigureHistoryDrawer } from "@/components/FigureHistoryDrawer";
+import { ModelSelector } from "@/components/ModelSelector";
+import { TemplateGallery } from "@/components/TemplateGallery";
+import { loadStoredModel, saveStoredModel, type GenerationModelId } from "@/lib/models";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,18 +37,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { LatexCode } from "@/components/LatexCode";
-import { Link } from "react-router-dom";
 import {
   Copy,
   Check,
   ArrowRight,
+  ArrowUp,
   Sparkles,
-  FileText,
   Wand2,
   History,
   SlidersHorizontal,
   Paperclip,
   X,
+  FileText,
   ChevronDown,
   Maximize2,
   Workflow,
@@ -46,6 +59,8 @@ import {
   Loader2,
   CircleX,
   TriangleAlert,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 
 interface LatexVersion {
@@ -138,10 +153,10 @@ const ARROW_STYLE_OPTIONS: Array<{ value: ArrowStyle; label: string }> = [
 ];
 
 const DOCUMENT_FIT_OPTIONS: Array<{ value: DocumentFit; label: string; hint: string }> = [
-  { value: "standalone", label: "Standalone", hint: "Full document, auto size" },
-  { value: "snippet", label: "Paper snippet", hint: "Paste-ready body only" },
-  { value: "column", label: "Column width", hint: "Fits ~8.5cm IEEE column" },
-  { value: "fullpage", label: "Full page", hint: "Spans full text width" },
+  { value: "column", label: "Column (~8.5 cm)", hint: "IEEE/ACM two-column" },
+  { value: "fullpage", label: "Full width (~17 cm)", hint: "Single-column textwidth" },
+  { value: "snippet", label: "Paste snippet", hint: "Raw tikz/tabular only" },
+  { value: "standalone", label: "Standalone preview", hint: "Preview only in teXlab" },
 ];
 
 const GENERATION_STAGES = [
@@ -269,11 +284,17 @@ const Index = () => {
   const [density, setDensity] = useState<Density>("normal");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("auto");
   const [arrowStyle, setArrowStyle] = useState<ArrowStyle>("solid");
-  const [documentFit, setDocumentFit] = useState<DocumentFit>("standalone");
+  const [documentFit, setDocumentFit] = useState<DocumentFit>("column");
   const [references, setReferences] = useState<Reference[]>([]);
+  const [generationModel, setGenerationModel] = useState<GenerationModelId>(() => loadStoredModel());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [cursorPos, setCursorPos] = useState({ ln: 1, col: 1 });
   const [compileMs, setCompileMs] = useState<number | null>(null);
+  const [fitStatus, setFitStatus] = useState<FitStatus>("idle");
+  const [codeView, setCodeView] = useState<"source" | "paste">("source");
+  const [isExporting, setIsExporting] = useState(false);
+  const [currentFigureId, setCurrentFigureId] = useState<string | null>(null);
+  const fitRefineAttemptsRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const describeCardRef = useRef<HTMLDivElement | null>(null);
@@ -501,13 +522,17 @@ const Index = () => {
       setStyle(resolvedStyle);
     }
     setIsGenerating(true);
+    repairAttemptsRef.current = 0;
+    fitRefineAttemptsRef.current = 0;
+    setFitStatus("idle");
+    setCurrentFigureId(null);
     // The output section renders as soon as generation starts, so bring the
     // staged progress into view immediately rather than after the result.
     requestAnimationFrame(() => {
       outputSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     try {
-      const latex = await generateLaTeX(input, preferences, references);
+      const latex = await generateLaTeX(input, preferences, references, generationModel);
       repairAttemptsRef.current = 0;
       setVersions([{ latex, label: "Original" }]);
       setActiveVersion(0);
@@ -538,7 +563,7 @@ const Index = () => {
         }
       }
 
-      const latex = await refineLaTeX(refineInput, output, preferences, refineRefs);
+      const latex = await refineLaTeX(refineInput, output, preferences, refineRefs, generationModel);
       if (latex.trim() === output.trim()) {
         toast.info("The model returned unchanged code. Try describing the change more specifically, e.g. which nodes or labels to move.");
         return;
@@ -565,68 +590,130 @@ const Index = () => {
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(output);
+    const text =
+      codeView === "paste" && output
+        ? buildPasteSnippet(output, documentFit, outputType)
+        : output;
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const buildPreviewDocument = (latex: string) => {
-    // 1. Remove markdown code blocks if present
-    const cleanedLatex = latex.replace(/```latex\n?/gi, '').replace(/```\n?/g, '').trim();
+  const pasteSnippet = output ? buildPasteSnippet(output, documentFit, outputType) : "";
 
-    // 2. Extract preamble-only commands the LLM might generate
-    const preambleRegex = /\\(usepackage|usetikzlibrary|pgfplotsset).*?(?:\{[^}]+\}|\[[^\]]+\])+/gi;
-    const preambleMatches = cleanedLatex.match(preambleRegex) || [];
-    const preamble = preambleMatches.join('\n');
-    let body = cleanedLatex.replace(preambleRegex, '').trim();
-
-    // 3. Remove document wrappers more robustly
-    body = body.replace(/\\documentclass[\s\S]*?\{[\s\S]*?\}/gi, '');
-    body = body.replace(/\\begin\s*\{document\}/gi, '');
-    body = body.replace(/\\end\s*\{document\}/gi, '');
-
-    // 4. In snippet/column/full-page modes the model returns float wrappers
-    // (figure/table/caption/label) that cannot compile inside standalone;
-    // strip them so the artifact itself still previews.
-    body = body.replace(/\\begin\s*\{(figure|table)\*?\}(\[[^\]]*\])?/gi, '');
-    body = body.replace(/\\end\s*\{(figure|table)\*?\}/gi, '');
-    body = body.replace(/\\centering/gi, '');
-    // \caption may carry an optional short title and nested braces.
-    body = body.replace(/\\caption\s*\*?\s*(\[[^\]]*\])?\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}/gi, '');
-    body = body.replace(/\\label\s*\{[^}]*\}/gi, '');
-    body = body.trim();
-
-    const isBoxContent = /\\begin\s*\{(tikzpicture|tabular|longtable)\}/i.test(body);
-
-    // Column / full-page fits target a fixed width; scale box content to it so
-    // the preview reflects how it will sit in a paper.
-    if (isBoxContent && (documentFit === "column" || documentFit === "fullpage")) {
-      const targetWidth = documentFit === "column" ? "8.5cm" : "17cm";
-      body = `\\resizebox{${targetWidth}}{!}{%\n${body}\n}`;
+  const handleDownloadZip = async () => {
+    if (!output) return;
+    setIsExporting(true);
+    try {
+      await downloadFigureZip({
+        latex: output,
+        prompt: input,
+        documentFit,
+        outputType,
+      });
+      toast.success("Downloaded figure project (.zip)");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to build export zip");
+    } finally {
+      setIsExporting(false);
     }
+  };
 
-    // varwidth caps the page at a text-line width (~8.5cm) and standalone
-    // crops anything wider, clipping large diagrams/tables. Box content
-    // (tikz, tabular) sizes itself, so only text/math needs varwidth.
-    const classOptions = isBoxContent ? "border=10pt" : "border=10pt,varwidth";
+  const handleOpenInOverleaf = async () => {
+    if (!output) return;
+    setIsExporting(true);
+    try {
+      await openInOverleaf({
+        latex: output,
+        prompt: input,
+        documentFit,
+        outputType,
+      });
+      toast.success("Opening in Overleaf…");
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not open in Overleaf. Try Download .zip instead.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
-    const fullDoc = `\\documentclass[${classOptions}]{standalone}
-\\usepackage{tikz}
-\\usepackage{pgfplots}
-\\usepackage{amsmath,amssymb}
-\\usepackage{array}
-\\usepackage{booktabs}
-\\usepackage{multirow}
-\\usepackage{xcolor}
-\\usepackage{graphicx}
-\\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds, calc}
-\\pgfplotsset{compat=1.14}
-${preamble}
-\\begin{document}
-${body}
-\\end{document}`;
+  const applyTemplate = (templateId: string) => {
+    const template = FIGURE_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    manualSelectionRef.current = true;
+    setInput(template.prompt);
+    setOutputType(template.outputType);
+    setStyle(template.style);
+    setColorMode(template.colorMode);
+    setDensity(template.density);
+    setAspectRatio(template.aspectRatio);
+    setDocumentFit(template.documentFit);
+    setTypeExpanded(false);
+    describeCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
-    return fullDoc;
+  const restoreFigure = (figure: StoredFigure) => {
+    manualSelectionRef.current = true;
+    setInput(figure.prompt);
+    setOutputType(figure.preferences.outputType);
+    setStyle(figure.preferences.style);
+    setColorMode(figure.preferences.colorMode);
+    setDensity(figure.preferences.density);
+    setAspectRatio(figure.preferences.aspectRatio);
+    setArrowStyle(figure.preferences.arrowStyle);
+    setDocumentFit(figure.preferences.documentFit);
+    setVersions(figure.versions);
+    setActiveVersion(figure.activeVersion);
+    setCurrentFigureId(figure.id);
+    repairAttemptsRef.current = 0;
+    fitRefineAttemptsRef.current = 0;
+  };
+
+  const runAutoFitRefine = async () => {
+    if (!output || fitRefineAttemptsRef.current >= 1) return;
+    fitRefineAttemptsRef.current += 1;
+    setIsRefining(true);
+    try {
+      const refineRefs = [...references];
+      if (previewUrl) {
+        const previewImage = await pdfUrlToPngDataUrl(previewUrl);
+        if (previewImage) {
+          refineRefs.push({ kind: "image", name: "current-preview", content: previewImage });
+        }
+      }
+      const instruction =
+        documentFit === "column"
+          ? "The figure is cropped or overflows on the right. Reflow and scale so the entire content fits within an IEEE two-column width (~8.5cm). Do not remove content."
+          : "The figure is cropped or overflows. Reflow and scale so the entire content fits within full text width (~17cm). Do not remove content.";
+      const latex = await refineLaTeX(instruction, output, preferences, refineRefs, generationModel);
+      if (latex.trim() !== output.trim()) {
+        repairAttemptsRef.current = 0;
+        setActiveVersion(versions.length);
+        setVersions((prev) => [...prev, { latex, label: `Fit fix ${prev.length}` }]);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Auto-fit refine failed");
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  const persistFigure = () => {
+    if (!output || versions.length === 0) return;
+    const title =
+      input.trim().slice(0, 48) + (input.trim().length > 48 ? "…" : "") || "Untitled figure";
+    const saved = saveFigure({
+      id: currentFigureId ?? undefined,
+      title,
+      prompt: input,
+      preferences,
+      versions,
+      activeVersion,
+    });
+    setCurrentFigureId(saved.id);
   };
 
   useEffect(() => {
@@ -636,16 +723,39 @@ ${body}
     const controller = new AbortController();
     compileAbortRef.current = controller;
 
-    const applyResult = (result: CompileResult) => {
+    const applyResult = async (result: CompileResult) => {
       setPreviewUrl(result.status === "success" ? result.pdfUrl : null);
       setPreviewError(result.status === "error" ? result.log : null);
       setIsPreviewLoading(false);
+
+      if (result.status === "success" && result.pdfUrl) {
+        setFitStatus("checking");
+        const raster = await pdfUrlToPngDataUrl(result.pdfUrl);
+        if (raster && !controller.signal.aborted) {
+          const fit = await validateFigureFit(raster, documentFit);
+          if (fit) {
+            setFitStatus(fit.status);
+            if (
+              (fit.status === "cropped" || fit.status === "may_overflow") &&
+              fitRefineAttemptsRef.current < 1 &&
+              (documentFit === "column" || documentFit === "fullpage")
+            ) {
+              void runAutoFitRefine();
+            }
+          } else {
+            setFitStatus("verified");
+          }
+        }
+        if (!controller.signal.aborted) persistFigure();
+      } else if (result.status === "error") {
+        setFitStatus("idle");
+      }
     };
 
-    const doc = buildPreviewDocument(output);
+    const doc = buildPreviewDocument(output, documentFit);
     const cached = compileCacheRef.current.get(doc);
     if (cached) {
-      applyResult(cached);
+      void applyResult(cached);
       return () => controller.abort();
     }
 
@@ -663,7 +773,7 @@ ${body}
         // model, then let the effect re-run with the corrected code.
         repairAttemptsRef.current += 1;
         setPreviewStage("repairing");
-        const repaired = await repairLaTeX(result.log, output, preferences);
+        const repaired = await repairLaTeX(result.log, output, preferences, generationModel);
         if (controller.signal.aborted) return;
         if (repaired.trim() !== output.trim()) {
           replaceActiveLatex(repaired);
@@ -728,11 +838,7 @@ ${body}
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/workspace">
-              <Button variant="outline" size="sm" className="font-mono text-xs hidden sm:flex border-primary/20 hover:bg-primary/10 hover:text-primary transition-colors">
-                <FileText className="w-3.5 h-3.5 mr-1.5" /> Full Paper Workspace
-              </Button>
-            </Link>
+            <FigureHistoryDrawer onRestore={restoreFigure} />
             <a
               href="https://www.latex-project.org/"
               target="_blank"
@@ -757,8 +863,8 @@ ${body}
             <br />
             to <LatexLogo />
           </h1>
-          <p className="text-muted-foreground font-heading text-lg max-w-md">
-            Describe your diagram or table in plain English. Get publication-ready LaTeX code instantly.
+          <p className="text-muted-foreground font-heading text-lg max-w-lg">
+            Describe a diagram or table — get a figure that <span className="text-foreground">compiles and fits your paper column</span>, then open it in Overleaf.
           </p>
         </div>
       </section>
@@ -934,8 +1040,16 @@ ${body}
             )}
             </div>
 
-            {/* Right group: format · pin · generate */}
+            {/* Right group: model · format · pin · generate */}
             <div className="flex shrink-0 items-center gap-2">
+            <ModelSelector
+              value={generationModel}
+              disabled={isGenerating || isRefining}
+              onChange={(model) => {
+                setGenerationModel(model);
+                saveStoredModel(model);
+              }}
+            />
             <Popover>
               <PopoverTrigger asChild>
                 <Button type="button" variant="chip" size="sm" className="h-8 rounded-none px-3 font-mono">
@@ -1002,7 +1116,7 @@ ${body}
                   </FormatSection>
                 )}
 
-                <FormatSection label="Document fit">
+                <FormatSection label="Paper fit">
                   <div className="grid gap-1">
                     {DOCUMENT_FIT_OPTIONS.map((option) => (
                       <button
@@ -1056,28 +1170,25 @@ ${body}
               onClick={handleGenerate}
               disabled={!input.trim() || isGenerating}
               variant="default"
-              size="sm"
-              className="h-9 gap-1.5 rounded-none px-4 font-mono normal-case tracking-normal shadow-sm transition-shadow hover:shadow-md disabled:shadow-none"
+              size="icon"
+              aria-label={isGenerating ? "Generating" : "Generate"}
+              className="h-9 w-9 shrink-0 rounded-none shadow-sm transition-shadow hover:shadow-md disabled:shadow-none"
             >
               {isGenerating ? (
-                <>
-                  <span
-                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
-                    aria-hidden="true"
-                  />
-                  Generating…
-                </>
+                <span
+                  className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
+                  aria-hidden="true"
+                />
               ) : (
-                <>
-                  Generate
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </>
+                <ArrowUp className="h-4 w-4" />
               )}
             </Button>
             </div>
           </div>
         </div>
       </section>
+
+      <TemplateGallery onSelect={applyTemplate} />
 
       {/* Output */}
       {(output || isGenerating) && (
@@ -1109,25 +1220,73 @@ ${body}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Code Panel */}
             <div className="bg-card border-2 border-foreground flex flex-col h-[600px]">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/50">
-                <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-                  Code — <LatexLogo />
-                </span>
-                <Button variant="ghost" size="sm" onClick={handleCopy}>
-                  {copied ? (
-                    <span className="flex items-center gap-1.5 text-xs">
-                      <Check className="w-3.5 h-3.5" /> Copied
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-xs">
-                      <Copy className="w-3.5 h-3.5" /> Copy
-                    </span>
-                  )}
-                </Button>
+              <div className="flex flex-col gap-2 border-b border-border bg-muted/50 px-4 py-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCodeView("source")}
+                      className={`font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                        codeView === "source" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Source
+                    </button>
+                    <span className="text-muted-foreground/40">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setCodeView("paste")}
+                      className={`font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                        codeView === "paste" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Paste into paper
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {output && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isExporting}
+                          onClick={handleDownloadZip}
+                          className="h-7 gap-1 px-2 font-mono text-[10px] normal-case"
+                          title="Download .zip project"
+                        >
+                          <Download className="h-3 w-3" />
+                          .zip
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isExporting}
+                          onClick={handleOpenInOverleaf}
+                          className="h-7 gap-1 px-2 font-mono text-[10px] normal-case"
+                          title="Open in Overleaf"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Overleaf
+                        </Button>
+                      </>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={handleCopy} disabled={!output}>
+                      {copied ? (
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <Check className="w-3.5 h-3.5" /> Copied
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <Copy className="w-3.5 h-3.5" /> Copy
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
               {output ? (
                 <div className="px-4 py-4 overflow-auto flex-1">
-                  <LatexCode code={output} />
+                  <LatexCode code={codeView === "paste" ? pasteSnippet : output} />
                 </div>
               ) : (
                 <div className="skeleton-sheen relative flex-1 overflow-hidden px-4 py-4" aria-hidden="true">
@@ -1168,9 +1327,36 @@ ${body}
             {/* Preview Panel */}
             <div className="bg-card border-2 border-foreground flex flex-col h-[600px]">
               <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/50">
-                <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-                  Preview
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
+                    Preview
+                  </span>
+                  {output && !isPreviewLoading && !previewError && (
+                    <span
+                      className={`border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide ${
+                        fitStatus === "verified"
+                          ? "border-emerald-600/40 bg-emerald-500/10 text-emerald-700"
+                          : fitStatus === "may_overflow"
+                            ? "border-amber-600/40 bg-amber-500/10 text-amber-800"
+                            : fitStatus === "cropped"
+                              ? "border-destructive/40 bg-destructive/10 text-destructive"
+                              : fitStatus === "checking"
+                                ? "border-border text-muted-foreground"
+                                : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {fitStatus === "checking"
+                        ? "Checking fit…"
+                        : fitStatus === "verified"
+                          ? `✓ ${fitBadgeLabel(documentFit)}`
+                          : fitStatus === "may_overflow"
+                            ? "⚠ May overflow"
+                            : fitStatus === "cropped"
+                              ? "✕ Cropped"
+                              : fitBadgeLabel(documentFit)}
+                    </span>
+                  )}
+                </div>
                 {previewUrl && !previewError && !isPreviewLoading && !isGenerating && (
                   <Button
                     type="button"

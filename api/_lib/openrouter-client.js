@@ -4,13 +4,23 @@
 // - anything else (default): free models only, so a credit-less key (e.g. the
 //   production deployment) never wastes a round-trip on 402 responses.
 // OPENROUTER_MODEL (comma-separated) overrides whichever list is active.
+export const SELECTABLE_MODEL_IDS = [
+    "openai/gpt-4o-mini",
+    "openai/gpt-5-mini",
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-pro",
+    "google/gemini-3-flash-preview",
+];
+
 export const PAID_OPENROUTER_MODELS = [
-    "anthropic/claude-sonnet-5",
+    // Fast, reliable default for TikZ/tables; vision-capable for refine.
+    "openai/gpt-4o-mini",
+    "openai/gpt-5-mini",
+    "google/gemini-2.5-pro",
     "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash",
-    "openai/gpt-5-mini",
+    // Free fallbacks when credits run low.
     "qwen/qwen3-coder:free",
-    "qwen/qwen3-next-80b-a3b-instruct:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "meta-llama/llama-3.3-70b-instruct:free",
 ];
@@ -27,7 +37,7 @@ export const FREE_OPENROUTER_MODELS = [
 // Models that accept image inputs. Used to filter the fallback list when the
 // request includes image references.
 const VISION_MODELS = new Set([
-    "anthropic/claude-sonnet-5",
+    "google/gemini-2.5-pro",
     "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash",
     "google/gemini-2.5-flash-lite",
@@ -39,7 +49,7 @@ const VISION_MODELS = new Set([
     "nvidia/nemotron-nano-12b-v2-vl:free",
 ]);
 
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 const DEFAULT_TIKZ_LIBRARIES = [
     "arrows.meta",
@@ -170,12 +180,15 @@ async function requestCompletion(apiKey, model, messages, temperature, maxTokens
 }
 
 export async function createCompletion(apiKey, messages, temperature, maxTokens = 4096, options = {}) {
-    let models = getConfiguredModels();
+    let models =
+        options.model && options.model !== "auto"
+            ? [options.model]
+            : getConfiguredModels();
 
     if (options.requiresVision) {
         models = models.filter((model) => VISION_MODELS.has(model));
         if (models.length === 0) {
-            throw new Error("Image references need a vision-capable model, but none is configured.");
+            throw new Error("The selected model does not support image references. Switch to Auto or a vision-capable model.");
         }
     }
 

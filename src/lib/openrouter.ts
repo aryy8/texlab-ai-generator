@@ -36,12 +36,15 @@ export interface Reference {
 
 type GenerationMode = "generate" | "refine" | "repair";
 
+export type GenerationModel = import("@/lib/models").GenerationModelId;
+
 async function requestLatex(body: {
     prompt: string;
     preferences: GenerationPreferences;
     mode?: GenerationMode;
     baseLatex?: string;
     references?: Reference[];
+    model?: GenerationModel;
 }): Promise<string> {
     const response = await fetch("/api/generate-latex", {
         method: "POST",
@@ -63,34 +66,20 @@ export const generateLaTeX = (
     prompt: string,
     preferences: GenerationPreferences,
     references: Reference[] = [],
-): Promise<string> => requestLatex({ prompt, preferences, references });
+    model: GenerationModel = "auto",
+): Promise<string> => requestLatex({ prompt, preferences, references, model });
 
 export const refineLaTeX = (
     instruction: string,
     baseLatex: string,
     preferences: GenerationPreferences,
     references: Reference[] = [],
-): Promise<string> => requestLatex({ prompt: instruction, preferences, mode: "refine", baseLatex, references });
+    model: GenerationModel = "auto",
+): Promise<string> => requestLatex({ prompt: instruction, preferences, mode: "refine", baseLatex, references, model });
 
 export const repairLaTeX = (
     errorLog: string,
     baseLatex: string,
     preferences: GenerationPreferences,
-): Promise<string> => requestLatex({ prompt: errorLog, preferences, mode: "repair", baseLatex });
-
-export const generatePaperLaTeX = async (prompt: string, format: string): Promise<string> => {
-    const response = await fetch("/api/generate-paper", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt, format }),
-    });
-
-    if (!response.ok) {
-        throw new Error(await readErrorMessage(response));
-    }
-
-    const data = await response.json();
-    return data.content;
-};
+    model: GenerationModel = "auto",
+): Promise<string> => requestLatex({ prompt: errorLog, preferences, mode: "repair", baseLatex, model });

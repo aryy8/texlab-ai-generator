@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-07-22T00:00:00.000Z",
+  "mode": "manual-import",
+  "templates": [
+    {
+      "id": "cnn-mnist",
+      "ok": true,
+      "preview": "/templates/cnn-mnist.png",
+      "source": "manual-pdf"
+    },
+    {
+      "id": "nlp-pipeline",
+      "ok": true,
+      "preview": "/templates/nlp-pipeline.png",
+      "source": "manual-pdf"
+    },
+    {
+      "id": "model-comparison",
+      "ok": true,
+      "preview": "/templates/model-comparison.png",
+      "source": "manual-pdf"
+    },
+    {
+      "id": "training-loss",
+      "ok": true,
+      "preview": "/templates/training-loss.png",
+      "source": "manual-pdf"
+    },
+    {
+      "id": "confusion-matrix",
+      "ok": true,
+      "preview": "/templates/confusion-matrix.png",
+      "source": "curated"
+    },
+    {
+      "id": "neural-network",
+      "ok": true,
+      "preview": "/templates/neural-network.png",
+      "source": "manual-pdf",
+      "importedAt": "2026-07-22T10:22:06.099Z"
+    },
+    {
+      "id": "ablation-table",
+      "ok": true,
+      "preview": "/templates/ablation-table.png",
+      "source": "manual-pdf",
+      "importedAt": "2026-07-22T10:28:59.464Z"
+    },
+    {
+      "id": "system-architecture",
+      "ok": true,
+      "preview": "/templates/system-architecture.png",
+      "source": "curated"
+    }
+  ],
+  "updatedAt": "2026-07-22T10:28:59.465Z"
+}

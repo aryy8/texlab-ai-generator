@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Plugin, ViteDevServer } from "vite";
 import generateLatex from "./api/generate-latex.js";
-import generatePaper from "./api/generate-paper.js";
 import compileLatex from "./api/compile-latex.js";
+import exportOverleaf from "./api/export-overleaf.js";
 
 type ApiRes = {
   status: (code: number) => ApiRes;
@@ -14,6 +14,7 @@ type ApiRes = {
 type ApiHandler = (
   req: {
     method?: string;
+    url?: string;
     body?: unknown;
     headers?: IncomingMessage["headers"];
     socket?: { remoteAddress?: string };
@@ -60,10 +61,10 @@ function createMockRes(serverRes: ServerResponse): ApiRes {
   return apiRes;
 }
 
-const routes: Record<string, ApiHandler> = {
+const postRoutes: Record<string, ApiHandler> = {
   "/api/generate-latex": generateLatex as ApiHandler,
-  "/api/generate-paper": generatePaper as ApiHandler,
   "/api/compile-latex": compileLatex as ApiHandler,
+  "/api/export-overleaf": exportOverleaf as ApiHandler,
 };
 
 export function apiDevPlugin(env: Record<string, string>): Plugin {
@@ -77,9 +78,30 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
       }
 
       server.middlewares.use(async (req, res, next) => {
-        const pathname = req.url?.split("?")[0];
-        const handler = pathname ? routes[pathname] : undefined;
+        const pathname = req.url?.split("?")[0] ?? "";
 
+        // GET download for Overleaf snip_uri
+        if (req.method === "GET" && pathname.startsWith("/api/export-overleaf/")) {
+          try {
+            await exportOverleaf(
+              {
+                method: req.method,
+                url: req.url,
+                headers: req.headers,
+                socket: { remoteAddress: req.socket.remoteAddress },
+              },
+              createMockRes(res),
+            );
+          } catch (error) {
+            console.error(error);
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Internal server error" }));
+          }
+          return;
+        }
+
+        const handler = postRoutes[pathname];
         if (!handler || req.method !== "POST") {
           return next();
         }
@@ -90,6 +112,7 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
           await handler(
             {
               method: req.method,
+              url: req.url,
               body: parsedBody,
               headers: req.headers,
               socket: { remoteAddress: req.socket.remoteAddress },

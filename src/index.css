@@ -131,6 +131,11 @@
   body {
     @apply bg-background text-foreground font-heading antialiased;
   }
+
+  /* Floating menus: never CSS-transition transform — Floating UI updates it every frame. */
+  [data-radix-popper-content-wrapper] {
+    transition: none !important;
+  }
 }
 
 @layer utilities {

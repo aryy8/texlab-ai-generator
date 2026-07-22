@@ -1,0 +1,32 @@
+\documentclass[border=10pt]{standalone}
+\usepackage{graphicx}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\definecolor{traincol}{RGB}{30,64,105}
+\definecolor{valcol}{RGB}{180,120,40}
+\begin{document}
+\resizebox{8.4cm}{!}{%
+\begin{tikzpicture}
+\begin{axis}[
+  width=8.2cm, height=5.2cm,
+  xlabel={Epoch}, ylabel={Cross-entropy loss},
+  legend style={font=\scriptsize, fill=white, draw=gray!40, at={(0.97,0.97)}, anchor=north east},
+  grid=major, grid style={gray!20},
+  tick label style={font=\scriptsize},
+  label style={font=\scriptsize},
+  xmin=0, xmax=100, ymin=0, ymax=2.2,
+  axis line style={gray!60},
+]
+\addplot[thick, traincol, mark=none, domain=0:100, samples=80]
+  {0.22 + 1.75*exp(-x/18) + 0.04*sin(deg(x/4))};
+\addlegendentry{Train}
+\addplot[thick, valcol, dashed, mark=none, domain=0:100, samples=80]
+  {0.28 + 1.7*exp(-x/22) + 0.006*(x-45)^2/100};
+\addlegendentry{Validation}
+\draw[gray!50, dotted, thick] (axis cs:62,0) -- (axis cs:62,2.2);
+\node[font=\tiny, anchor=south, rotate=90] at (axis cs:62,1.1) {early stop};
+\node[font=\tiny, anchor=north west] at (axis cs:5,0.35) {best val: 0.31};
+\end{axis}
+\end{tikzpicture}%
+}
+\end{document}

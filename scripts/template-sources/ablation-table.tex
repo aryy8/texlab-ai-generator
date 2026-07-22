@@ -1,0 +1,19 @@
+\documentclass[border=8pt]{standalone}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\begin{document}
+\resizebox{8.4cm}{!}{%
+\footnotesize
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Variant} & \textbf{Accuracy} & \textbf{F1} \\
+\midrule
+Full model        & \textbf{92.1} & \textbf{0.91} \\
+w/o attention     & 89.4 & 0.88 \\
+w/o data aug.     & 90.2 & 0.89 \\
+w/o pretraining   & 88.7 & 0.87 \\
+\bottomrule
+\end{tabular}%
+}
+\end{document}
