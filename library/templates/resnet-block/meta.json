@@ -1,0 +1,48 @@
+{
+  "id": "resnet-block",
+  "name": "ResNet residual block",
+  "kind": "template",
+  "tags": [
+    "resnet",
+    "residual",
+    "skip connection",
+    "identity",
+    "f(x)",
+    "weight layer",
+    "relu",
+    "he et al"
+  ],
+  "styles": ["architecture", "neural-network"],
+  "galleryId": "resnet-block",
+  "requires": ["tikz", "arrows.meta"],
+  "edit": {
+    "parameters": [
+      "branchlabels",
+      "actlabel",
+      "inputlabel",
+      "residuallabel",
+      "outputlabel",
+      "skiplabel",
+      "identitylabel",
+      "blocksep",
+      "blockw",
+      "blockh",
+      "skipbow"
+    ],
+    "nodeNaming": "xlabel, wl1..wlN, sum, out; skip via branch/skipright",
+    "operations": [
+      "Change depth via \\def\\branchlabels{layer1,layer2,layer3}",
+      "Rename activation with \\actlabel",
+      "Widen/narrow skip bow with \\skipbow",
+      "Recolor: weight layers=tlblue, sum=tlteal, identity skip=tlorange"
+    ],
+    "invariants": [
+      "Main stem is vertical weight layers into a + node, then activation",
+      "Identity skip bows right and re-enters the sum",
+      "Layer count comes only from \\branchlabels",
+      "Only tl* house palette",
+      "Standalone compilable"
+    ]
+  },
+  "prompt": "Publication-quality TikZ ResNet residual block: bold input x, two steel-blue weight-layer boxes stacked with ReLU between them forming F(x), a sage-teal circled + summation, then ReLU out. Copper-orange identity skip connection bows to the right and re-enters the sum. Side labels F(x), F(x)+x, and identity — classic He et al. residual learning block, not a full CNN architecture."
+}

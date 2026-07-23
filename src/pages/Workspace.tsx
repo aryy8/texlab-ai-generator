@@ -82,14 +82,6 @@ const MAX_REFERENCES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES = 20_000;
 
-const PLACEHOLDER_PROMPTS = [
-  "A complex neural network architecture flowchart using TikZ...",
-  "An IEEE conference 2-column table comparing machine learning models...",
-  "A high-quality academic graph showing training loss over 100 epochs...",
-  "A flowchart showing the compilation process of a LaTeX document...",
-  "An NLP pipeline for text classification using bagofwords and SVM...",
-];
-
 const OUTPUT_TYPE_OPTIONS: Array<{
   value: OutputType;
   label: string;
@@ -166,9 +158,6 @@ const Workspace = () => {
   // Caches compiled results per document string so switching version tabs is
   // instant instead of recompiling.
   const compileCacheRef = useRef<Map<string, CompileResult>>(new Map());
-  const [placeholderText, setPlaceholderText] = useState("");
-  const [promptIndex, setPromptIndex] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [outputType, setOutputType] = useState<OutputType | null>(null);
   const [style, setStyle] = useState<string | null>(null);
   // Auto-detection drives type/style until the user picks one manually.
@@ -214,34 +203,6 @@ const Workspace = () => {
       root.classList.remove("dark");
     };
   }, [workspaceDark]);
-
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    const currentPrompt = PLACEHOLDER_PROMPTS[promptIndex];
-
-    if (isDeleting) {
-      if (placeholderText.length > 0) {
-        timeout = setTimeout(() => {
-          setPlaceholderText(currentPrompt.substring(0, placeholderText.length - 1));
-        }, 25);
-      } else {
-        setIsDeleting(false);
-        setPromptIndex((prev) => (prev + 1) % PLACEHOLDER_PROMPTS.length);
-      }
-    } else {
-      if (placeholderText.length < currentPrompt.length) {
-        timeout = setTimeout(() => {
-          setPlaceholderText(currentPrompt.substring(0, placeholderText.length + 1));
-        }, 50);
-      } else {
-        timeout = setTimeout(() => {
-          setIsDeleting(true);
-        }, 2500);
-      }
-    }
-
-    return () => clearTimeout(timeout);
-  }, [placeholderText, isDeleting, promptIndex]);
 
   // The API always needs a concrete type/style; fall back to diagram/flowchart
   // when the user hasn't chosen and detection came up empty.
@@ -1114,7 +1075,7 @@ const Workspace = () => {
                     placeholder={
                       output
                         ? 'Ask for a change… e.g. "make boxes wider"'
-                        : `Ask teXlab to build… e.g. ${placeholderText}`
+                        : "Ask teXlab to build a figure…"
                     }
                     rows={3}
                     className="w-full resize-none bg-transparent px-3 py-2.5 font-heading text-sm leading-relaxed text-[var(--ws-text)] placeholder:text-[var(--ws-text-muted)] focus:outline-none"

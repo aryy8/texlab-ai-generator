@@ -1,0 +1,60 @@
+\documentclass[border=10pt]{standalone}
+
+% teXlab library — ML training pipeline (data → model → loss → optimizer → update)
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
+
+\definecolor{tlblue}{HTML}{2E6B8A}
+\definecolor{tlteal}{HTML}{3D8B7A}
+\definecolor{tlorange}{HTML}{B86B2C}
+\definecolor{tlpurple}{HTML}{6E5A7E}
+\definecolor{tlgray}{HTML}{3F4A56}
+
+\begin{document}
+% ==== parameters (edit these) ============================================
+\def\colsep{1.55}
+\def\boxminw{2.15}
+\def\boxminh{1.05}
+\def\datalabel{Dataset}
+\def\modellabel{Model $f_\theta$}
+\def\losslabel{Loss $\mathcal{L}$}
+\def\optlabel{Optimizer}
+\def\fwdlabel{forward}
+\def\predlabel{prediction}
+\def\gradlabel{gradients}
+\def\updlabel{update $\theta$}
+% =========================================================================
+
+\begin{tikzpicture}[
+    node distance=0.35cm and \colsep cm,
+    >={Stealth[length=2.2mm]},
+    stage/.style={
+      rounded corners=2.5pt, line width=0.85pt, align=center,
+      minimum width=\boxminw cm, minimum height=\boxminh cm,
+      font=\sffamily\small,
+    },
+    data/.style={stage, draw=tlteal!75!black, fill=tlteal!12},
+    model/.style={stage, draw=tlblue!80!black, fill=tlblue!11},
+    loss/.style={stage, draw=tlpurple!75!black, fill=tlpurple!12},
+    opt/.style={stage, draw=tlorange!80!black, fill=tlorange!14},
+    flow/.style={draw=tlgray!65, line width=0.85pt, ->},
+    feedback/.style={draw=tlorange!85!black, line width=1.0pt, ->},
+    elabel/.style={font=\sffamily\footnotesize, text=tlgray},
+  ]
+
+  \node[data]  (data)  {\datalabel};
+  \node[model, right=of data]  (model) {\modellabel};
+  \node[loss,  right=of model] (loss)  {\losslabel};
+  \node[opt,   right=of loss]  (opt)   {\optlabel};
+
+  \draw[flow] (data)  -- node[elabel, above, sloped] {\fwdlabel} (model);
+  \draw[flow] (model) -- node[elabel, above, sloped] {\predlabel} (loss);
+  \draw[flow] (loss)  -- node[elabel, above, sloped] {\gradlabel} (opt);
+
+  % Parameter update loops under the pipeline back to the model
+  \draw[feedback]
+    (opt.south) -- ++(0,-0.85) -| node[pos=0.25, below, font=\sffamily\footnotesize, text=tlorange!80!black] {\updlabel}
+    (model.south);
+
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,81 @@
+\documentclass[border=12pt]{standalone}
+
+% teXlab library — ResNet residual block (weight stack + identity skip + sum)
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+
+\definecolor{tlblue}{HTML}{2E6B8A}
+\definecolor{tlteal}{HTML}{3D8B7A}
+\definecolor{tlorange}{HTML}{B86B2C}
+\definecolor{tlpurple}{HTML}{6E5A7E}
+\definecolor{tlgray}{HTML}{3F4A56}
+
+\begin{document}
+% ==== parameters (edit these) ============================================
+% Weight-layer labels, top → bottom. Entry count = layer count (classic = 2).
+\def\branchlabels{weight layer,weight layer}
+\def\actlabel{ReLU}
+\def\inputlabel{$\mathbf{x}$}
+\def\residuallabel{$\mathcal{F}(\mathbf{x})$}
+\def\outputlabel{$\mathcal{F}(\mathbf{x})+\mathbf{x}$}
+\def\skiplabel{$\mathbf{x}$}
+\def\identitylabel{identity}
+\def\blocksep{1.7}
+\def\blockw{3.1}
+\def\blockh{0.85}
+\def\skipbow{2.55}
+% =========================================================================
+
+\begin{tikzpicture}[
+    >={Stealth[length=2.2mm]},
+    wlayer/.style={
+      draw=tlblue!75!black, fill=tlblue!10, rounded corners=2.5pt,
+      line width=0.85pt, align=center, font=\sffamily\small,
+      minimum width=\blockw cm, minimum height=\blockh cm,
+    },
+    addop/.style={
+      circle, draw=tlteal!80!black, fill=tlteal!12, line width=0.9pt,
+      inner sep=1.2pt, minimum size=0.62cm, font=\sffamily\small,
+    },
+    flow/.style={draw=tlgray!65, line width=0.85pt, ->},
+    skip/.style={draw=tlorange!80!black, line width=1.0pt, ->, rounded corners=8pt},
+    actlbl/.style={font=\sffamily\footnotesize, text=tlgray, inner sep=2pt},
+    sidelbl/.style={font=\sffamily\small, text=tlgray},
+  ]
+
+  \node[font=\sffamily\bfseries, text=tlgray!90!black] (xlabel) at (0,0) {\inputlabel};
+
+  \foreach \lab [count=\i, remember=\i as \previ (initially 0)] in \branchlabels {
+    \pgfmathsetmacro{\yy}{-\i*\blocksep}
+    \node[wlayer] (wl\i) at (0,\yy) {\lab};
+    \ifnum\i=1
+      \draw[flow] (xlabel) -- (wl\i);
+    \else
+      \draw[flow] (wl\previ) -- node[actlbl, right] {\actlabel} (wl\i);
+    \fi
+    \global\let\nlayers\i
+  }
+
+  \pgfmathsetmacro{\sumy}{-(\nlayers+1)*\blocksep}
+  \node[addop] (sum) at (0,\sumy) {$+$};
+  \draw[flow] (wl\nlayers) -- (sum);
+  \pgfmathsetmacro{\outy}{\sumy-0.85*\blocksep}
+  \coordinate (out) at (0,\outy);
+  \draw[flow] (sum) -- node[actlbl, right] {\actlabel} (out);
+
+  % Identity skip bows right in copper (accent path vs gray main stem)
+  \coordinate (branch)    at (0,{-0.48*\blocksep});
+  \coordinate (skipright) at (\skipbow,{-0.48*\blocksep});
+  \draw[skip] (branch) -- (skipright) -- (skipright |- sum) -- (sum);
+
+  \pgfmathsetmacro{\leftx}{-\blockw/2-0.5}
+  \pgfmathsetmacro{\midy}{-(1+\nlayers)/2*\blocksep}
+  \node[sidelbl, anchor=east] at (\leftx,\midy) {\residuallabel};
+  \node[sidelbl, anchor=east] at (\leftx,\sumy) {\outputlabel};
+
+  \pgfmathsetmacro{\skmy}{(-0.48*\blocksep+\sumy)/2}
+  \node[sidelbl, anchor=west, text=tlorange!75!black] at (\skipbow+0.25,\skmy+0.32) {\skiplabel};
+  \node[sidelbl, anchor=west, text=tlorange!75!black] at (\skipbow+0.25,\skmy-0.10) {\identitylabel};
+
+\end{tikzpicture}
+\end{document}

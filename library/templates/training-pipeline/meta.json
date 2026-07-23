@@ -1,0 +1,49 @@
+{
+  "id": "training-pipeline",
+  "name": "Training pipeline",
+  "kind": "template",
+  "tags": [
+    "training",
+    "pipeline",
+    "dataset",
+    "optimizer",
+    "loss",
+    "gradients",
+    "backprop",
+    "finetune",
+    "learning loop",
+    "ml training"
+  ],
+  "styles": ["flowchart", "architecture"],
+  "galleryId": "training-pipeline",
+  "requires": ["tikz", "positioning", "arrows.meta"],
+  "edit": {
+    "parameters": [
+      "colsep",
+      "boxminw",
+      "boxminh",
+      "datalabel",
+      "modellabel",
+      "losslabel",
+      "optlabel",
+      "fwdlabel",
+      "predlabel",
+      "gradlabel",
+      "updlabel"
+    ],
+    "nodeNaming": "data, model, loss, opt",
+    "operations": [
+      "Rename stages via \\def\\*label{...}",
+      "Insert a stage with right=of between existing nodes",
+      "Recolor: data=tlteal, model=tlblue, loss=tlpurple, optimizer+update=tlorange",
+      "Adjust \\colsep for tighter/wider pipelines"
+    ],
+    "invariants": [
+      "Horizontal forward path Dataset → Model → Loss → Optimizer",
+      "Copper feedback under the row from Optimizer back to Model",
+      "Only tl* house palette",
+      "Standalone compilable"
+    ]
+  },
+  "prompt": "Publication-quality TikZ ML training pipeline: sage-teal Dataset, steel-blue Model f_θ, dusty-plum Loss L, copper-orange Optimizer in a left-to-right row with short edge labels (forward, prediction, gradients). A copper update-θ feedback arrow loops under the row from Optimizer back to Model. Sans-serif labels, parametric spacing — training loop diagram, not a decision flowchart or microservices architecture."
+}

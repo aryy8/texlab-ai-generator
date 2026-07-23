@@ -1,11 +1,20 @@
 import { FIGURE_TEMPLATES, type FigureTemplate } from "@/lib/templates";
+import { cn } from "@/lib/utils";
+
+/** Previews whose TikZ ink sits heavy on the right — nudge the img left in the card. */
+const PREVIEW_SHIFT_LEFT = new Set(["resnet-block", "encoder-decoder"]);
 
 function TemplatePreview({ template }: { template: FigureTemplate }) {
   return (
     <img
       src={template.previewSrc}
       alt={`Preview of ${template.title}`}
-      className="h-full w-full object-contain object-center p-2"
+      className={cn(
+        // max-* keeps the bitmap sized to content so flex centering on the parent works
+        "max-h-full max-w-full object-contain object-center p-2",
+        PREVIEW_SHIFT_LEFT.has(template.id) && "-translate-x-3 sm:-translate-x-4",
+        template.id === "training-pipeline" && "mx-auto translate-x-0",
+      )}
       decoding="async"
       loading="lazy"
       onError={(e) => {
@@ -31,7 +40,7 @@ function TemplateCard({
       onClick={() => onSelect(template.id)}
       className="group flex flex-col border border-border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/50 hover:shadow-md"
     >
-      <div className="relative flex h-36 items-center justify-center overflow-hidden border-b border-border bg-white">
+      <div className="relative flex h-36 w-full items-center justify-center overflow-hidden border-b border-border bg-white">
         <TemplatePreview template={template} />
         <div
           className="absolute inset-0 hidden items-center justify-center bg-muted/30 font-mono text-[10px] text-muted-foreground"
@@ -40,7 +49,7 @@ function TemplateCard({
           Preview loading…
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
+      <div className="flex flex-1 flex-col gap-1.5 p-3 text-left">
         <span className="font-heading text-sm font-semibold leading-tight group-hover:text-primary">
           {template.title}
         </span>

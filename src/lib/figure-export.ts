@@ -9,7 +9,13 @@ const DEFAULT_PREAMBLE = `\\usepackage{tikz}
 \\usepackage{xcolor}
 \\usepackage{graphicx}
 \\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds, calc}
-\\pgfplotsset{compat=1.14}`;
+\\pgfplotsset{compat=1.14}
+% teXlab academic palette (see library/STYLE.md)
+\\definecolor{tlblue}{HTML}{2E6B8A}
+\\definecolor{tlteal}{HTML}{3D8B7A}
+\\definecolor{tlorange}{HTML}{B86B2C}
+\\definecolor{tlpurple}{HTML}{6E5A7E}
+\\definecolor{tlgray}{HTML}{3F4A56}`;
 
 export interface ParsedLatex {
   preamble: string;

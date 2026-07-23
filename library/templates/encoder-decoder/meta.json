@@ -1,0 +1,48 @@
+{
+  "id": "encoder-decoder",
+  "name": "Encoder–decoder (bottleneck)",
+  "kind": "template",
+  "tags": [
+    "encoder",
+    "decoder",
+    "autoencoder",
+    "bottleneck",
+    "latent",
+    "vae",
+    "seq2seq",
+    "hourglass",
+    "reconstruction"
+  ],
+  "styles": ["architecture", "neural-network"],
+  "galleryId": "encoder-decoder",
+  "requires": ["tikz", "positioning", "arrows.meta"],
+  "edit": {
+    "parameters": [
+      "blockH",
+      "latentH",
+      "trapW",
+      "blockW",
+      "latentW",
+      "gap",
+      "inputlabel",
+      "encoderlabel",
+      "latentlabel",
+      "decoderlabel",
+      "outputlabel"
+    ],
+    "nodeNaming": "input, enc, z, dec, output",
+    "operations": [
+      "Change sizes via \\def\\blockH / \\latentH / \\trapW / \\gap",
+      "Rename via \\def\\*label{...}",
+      "Recolor: I/O+encoder=tlblue, decoder=tlteal, latent z=tlorange",
+      "Add a cross-attention or side block only if the user asks — keep the hourglass spine"
+    ],
+    "invariants": [
+      "Hourglass geometry: encoder trapezoid narrows into z; decoder widens out",
+      "Latent is the copper accent; do not recolor everything orange",
+      "Only tl* house palette",
+      "Standalone compilable"
+    ]
+  },
+  "prompt": "Publication-quality TikZ encoder–decoder hourglass: steel-blue Input x bar, steel-blue Encoder trapezoid narrowing into a copper-orange latent bottleneck z, sage-teal Decoder trapezoid widening to a steel-blue Output x-hat bar. Thin slate arrows along the center line, sans-serif labels, parametric sizes — block-level autoencoder diagram, not a neural-net of circles."
+}

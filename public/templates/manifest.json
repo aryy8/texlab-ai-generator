@@ -36,8 +36,9 @@
       "id": "neural-network",
       "ok": true,
       "preview": "/templates/neural-network.png",
-      "source": "manual-pdf",
-      "importedAt": "2026-07-22T10:22:06.099Z"
+      "source": "texlab-library",
+      "importedAt": "2026-07-23T18:25:17.677Z",
+      "libraryId": "feedforward-nn"
     },
     {
       "id": "ablation-table",
@@ -50,8 +51,42 @@
       "id": "system-architecture",
       "ok": true,
       "preview": "/templates/system-architecture.png",
-      "source": "curated"
+      "source": "texlab-library",
+      "libraryId": "system-block",
+      "importedAt": "2026-07-23T18:37:26.714Z"
+    },
+    {
+      "id": "flowchart-decision",
+      "ok": true,
+      "preview": "/templates/flowchart-decision.png",
+      "source": "texlab-library",
+      "libraryId": "flowchart-decision",
+      "importedAt": "2026-07-23T18:29:15.426Z"
+    },
+    {
+      "id": "encoder-decoder",
+      "ok": true,
+      "preview": "/templates/encoder-decoder.png",
+      "source": "texlab-library",
+      "libraryId": "encoder-decoder",
+      "importedAt": "2026-07-23T18:41:40.572Z"
+    },
+    {
+      "id": "resnet-block",
+      "ok": true,
+      "preview": "/templates/resnet-block.png",
+      "source": "texlab-library",
+      "libraryId": "resnet-block",
+      "importedAt": "2026-07-23T18:44:32.396Z"
+    },
+    {
+      "id": "training-pipeline",
+      "ok": true,
+      "preview": "/templates/training-pipeline.png",
+      "source": "texlab-library",
+      "libraryId": "training-pipeline",
+      "importedAt": "2026-07-23T19:04:12.426Z"
     }
   ],
-  "updatedAt": "2026-07-22T10:28:59.465Z"
+  "updatedAt": "2026-07-23T19:04:12.429Z"
 }

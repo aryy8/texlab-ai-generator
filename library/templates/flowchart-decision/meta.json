@@ -1,0 +1,49 @@
+{
+  "id": "flowchart-decision",
+  "name": "Flowchart (decision + loop)",
+  "kind": "template",
+  "tags": [
+    "flowchart",
+    "decision",
+    "diamond",
+    "yes/no",
+    "loop",
+    "retry",
+    "process",
+    "workflow",
+    "algorithm"
+  ],
+  "styles": ["flowchart"],
+  "galleryId": "flowchart-decision",
+  "requires": ["tikz", "positioning", "arrows.meta", "shapes.geometric", "shapes.misc"],
+  "edit": {
+    "parameters": [
+      "rowsep",
+      "boxminw",
+      "boxminh",
+      "startlabel",
+      "readlabel",
+      "checklabel",
+      "proclabel",
+      "endlabel",
+      "errorlabel",
+      "yeslabel",
+      "nolabel",
+      "looplabel"
+    ],
+    "nodeNaming": "start, read, check, proc, end, error",
+    "operations": [
+      "Rename steps via \\def\\*label{...}",
+      "Add/remove process nodes on the spine with below=of",
+      "Recolor: terminal/process=tlblue family, decision=tlteal, loop=tlorange",
+      "Adjust spacing with \\rowsep / \\boxminw / \\boxminh / \\branchsep"
+    ],
+    "invariants": [
+      "Decision is a diamond (tlteal); terminals are rounded pills (tlblue); processes are lighter blue cards",
+      "Yes continues down the spine; No branches right; retry loop uses |- routing in tlorange",
+      "Only tl* house palette colors",
+      "Standalone compilable"
+    ]
+  },
+  "prompt": "Publication-quality TikZ flowchart: Start and End as steel-blue rounded terminals, lighter blue process boxes (Read input, Process data, Report error), and a sage-teal decision diamond (Valid?) with Yes continuing down and No branching right to Report error. Copper-orange retry loop from error back up to Read input (orthogonal |- path). Stealth arrows, sans-serif labels, parametric spacing — standard algorithm flowchart, not a system architecture."
+}

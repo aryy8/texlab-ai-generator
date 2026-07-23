@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ArrowUp,
+  ArrowUpRight,
   Sparkles,
   SlidersHorizontal,
   Paperclip,
@@ -95,9 +96,9 @@ const COLOR_OPTIONS: Array<{
   swatches: string[];
 }> = [
   { value: "monochrome", label: "Monochrome", swatches: ["#111827", "#6b7280", "#d1d5db"] },
-  { value: "academic", label: "Academic", swatches: ["#1e3a5f", "#64748b", "#b45309"] },
-  { value: "pastel", label: "Pastel", swatches: ["#93c5fd", "#a7f3d0", "#fbcfe8"] },
-  { value: "vivid", label: "Vivid", swatches: ["#2563eb", "#dc2626", "#16a34a"] },
+  { value: "academic", label: "Academic", swatches: ["#2E6B8A", "#3D8B7A", "#B86B2C"] },
+  { value: "pastel", label: "Pastel", swatches: ["#7BA3B8", "#8BB5AA", "#D4A574"] },
+  { value: "vivid", label: "Vivid", swatches: ["#2E6B8A", "#B86B2C", "#3D8B7A"] },
 ];
 
 const DENSITY_OPTIONS: Array<{ value: Density; label: string }> = [
@@ -456,17 +457,12 @@ const Index = () => {
             >
               Templates
             </a>
-            <a
-              href="#how-it-works"
-              className="hidden text-xs font-mono text-muted-foreground transition-colors hover:text-foreground sm:inline"
-            >
-              How it works
-            </a>
             <Link
               to="/app"
-              className="text-xs font-mono text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground transition-colors hover:text-foreground"
             >
               Workspace
+              <ArrowUpRight className="h-3 w-3" aria-hidden />
             </Link>
           </div>
         </div>

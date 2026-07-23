@@ -26,6 +26,19 @@
     "arrowStyle": "solid"
   },
   {
+    "id": "flowchart-decision",
+    "title": "Flowchart",
+    "description": "Decision diamond + retry loop",
+    "prompt": "Publication-quality TikZ flowchart: Start and End as steel-blue rounded terminals, lighter blue process boxes (Read input, Process data, Report error), and a sage-teal decision diamond (Valid?) with Yes continuing down and No branching right to Report error. Copper-orange retry loop from error back up to Read input (orthogonal |- path). Stealth arrows, sans-serif labels, parametric spacing — standard algorithm flowchart, not a system architecture.",
+    "outputType": "diagram",
+    "style": "flowchart",
+    "colorMode": "academic",
+    "density": "normal",
+    "aspectRatio": "portrait",
+    "documentFit": "standalone",
+    "arrowStyle": "solid"
+  },
+  {
     "id": "model-comparison",
     "title": "Model comparison",
     "description": "IEEE-style results table",
@@ -67,14 +80,14 @@
   {
     "id": "neural-network",
     "title": "Neural network",
-    "description": "Layered MLP architecture",
-    "prompt": "TikZ side-view fully connected neural network: exactly 3 vertical layers of circle neurons (input, hidden, output), about 8 nodes visible per layer, thin lines connecting every node to every node in the next layer. Dark blue academic styling. Label the layers below: Input 784, Hidden 128, Output 10. Compact, square-ish, fits IEEE column width (~8.5cm).",
+    "description": "Feed-forward MLP · teXlab style",
+    "prompt": "Publication-quality TikZ feed-forward neural network: four layers with 4, 6, 6, and 2 circular neurons, fully connected between adjacent layers. Steel-blue neuron fills with darker outlines, thin slate-gray edges drawn behind the nodes. Sans-serif gray labels under each column: Input, Hidden, Hidden, Output. Vertically center each layer, even horizontal spacing, standalone academic style — not a flowchart of boxes.",
     "outputType": "diagram",
     "style": "neural-network",
     "colorMode": "academic",
     "density": "detailed",
-    "aspectRatio": "square",
-    "documentFit": "column",
+    "aspectRatio": "landscape",
+    "documentFit": "standalone",
     "arrowStyle": "solid"
   },
   {
@@ -93,14 +106,53 @@
   {
     "id": "system-architecture",
     "title": "System architecture",
-    "description": "Microservices layout",
-    "prompt": "TikZ system architecture diagram with three clear horizontal tiers and wide spacing: (1) Web client and API Gateway on top, (2) Auth, Core API, and Worker services in the middle row, (3) Postgres, Redis, and Queue at the bottom. Use rounded boxes, short 1-2 word labels, and a few labeled arrows (HTTPS, REST, cache, events). Use TikZ positioning with at least 1.5cm between adjacent boxes. No overlapping text, no crowded arrows, no diagonal label collisions. Full text width (~17cm), publication-quality academic style.",
+    "description": "Client · gateway · services · stores",
+    "prompt": "Publication-quality TikZ system architecture: dashed gray Client on the left, steel-blue API Gateway, then Service A / Service B branching above and below, with a sage-teal Database cylinder and copper-orange Cache cylinder to the right. Dashed steel-blue Backend group box fitting the services and stores. Stealth arrows, sans-serif labels, parametric spacing — 2D architecture layout, not a single vertical flowchart.",
     "outputType": "diagram",
     "style": "architecture",
     "colorMode": "academic",
     "density": "detailed",
     "aspectRatio": "landscape",
-    "documentFit": "fullpage",
+    "documentFit": "standalone",
+    "arrowStyle": "solid"
+  },
+  {
+    "id": "encoder-decoder",
+    "title": "Encoder–decoder",
+    "description": "Hourglass · latent bottleneck z",
+    "prompt": "Publication-quality TikZ encoder–decoder hourglass: steel-blue Input x bar, steel-blue Encoder trapezoid narrowing into a copper-orange latent bottleneck z, sage-teal Decoder trapezoid widening to a steel-blue Output x-hat bar. Thin slate arrows along the center line, sans-serif labels, parametric sizes — block-level autoencoder diagram, not a neural-net of circles.",
+    "outputType": "diagram",
+    "style": "architecture",
+    "colorMode": "academic",
+    "density": "normal",
+    "aspectRatio": "landscape",
+    "documentFit": "standalone",
+    "arrowStyle": "solid"
+  },
+  {
+    "id": "resnet-block",
+    "title": "ResNet block",
+    "description": "Residual · identity skip · sum",
+    "prompt": "Publication-quality TikZ ResNet residual block: bold input x, two steel-blue weight-layer boxes stacked with ReLU between them forming F(x), a sage-teal circled + summation, then ReLU out. Copper-orange identity skip connection bows to the right and re-enters the sum. Side labels F(x), F(x)+x, and identity — classic He et al. residual learning block, not a full CNN architecture.",
+    "outputType": "diagram",
+    "style": "architecture",
+    "colorMode": "academic",
+    "density": "normal",
+    "aspectRatio": "portrait",
+    "documentFit": "standalone",
+    "arrowStyle": "solid"
+  },
+  {
+    "id": "training-pipeline",
+    "title": "Training pipeline",
+    "description": "Data · model · loss · optimizer",
+    "prompt": "Publication-quality TikZ ML training pipeline: sage-teal Dataset, steel-blue Model f_θ, dusty-plum Loss L, copper-orange Optimizer in a left-to-right row with short edge labels (forward, prediction, gradients). A copper update-θ feedback arrow loops under the row from Optimizer back to Model. Sans-serif labels, parametric spacing — training loop diagram, not a decision flowchart or microservices architecture.",
+    "outputType": "diagram",
+    "style": "flowchart",
+    "colorMode": "academic",
+    "density": "normal",
+    "aspectRatio": "landscape",
+    "documentFit": "standalone",
     "arrowStyle": "solid"
   }
 ]

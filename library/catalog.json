@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "style": "library/STYLE.md",
+  "palette": {
+    "tlblue": "2E6B8A",
+    "tlteal": "3D8B7A",
+    "tlorange": "B86B2C",
+    "tlpurple": "6E5A7E",
+    "tlgray": "3F4A56"
+  },
+  "templates": [
+    {
+      "id": "feedforward-nn",
+      "path": "templates/feedforward-nn/template.tex",
+      "meta": "templates/feedforward-nn/meta.json"
+    },
+    {
+      "id": "flowchart-decision",
+      "path": "templates/flowchart-decision/template.tex",
+      "meta": "templates/flowchart-decision/meta.json"
+    },
+    {
+      "id": "system-block",
+      "path": "templates/system-block/template.tex",
+      "meta": "templates/system-block/meta.json"
+    },
+    {
+      "id": "encoder-decoder",
+      "path": "templates/encoder-decoder/template.tex",
+      "meta": "templates/encoder-decoder/meta.json"
+    },
+    {
+      "id": "resnet-block",
+      "path": "templates/resnet-block/template.tex",
+      "meta": "templates/resnet-block/meta.json"
+    },
+    {
+      "id": "training-pipeline",
+      "path": "templates/training-pipeline/template.tex",
+      "meta": "templates/training-pipeline/meta.json"
+    }
+  ],
+  "icons": [],
+  "examples": []
+}

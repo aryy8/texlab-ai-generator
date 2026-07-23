@@ -1,0 +1,84 @@
+\documentclass[border=8pt]{standalone}
+
+% teXlab library — encoder–decoder hourglass (input → enc → z → dec → output)
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
+
+\definecolor{tlblue}{HTML}{2E6B8A}
+\definecolor{tlteal}{HTML}{3D8B7A}
+\definecolor{tlorange}{HTML}{B86B2C}
+\definecolor{tlpurple}{HTML}{6E5A7E}
+\definecolor{tlgray}{HTML}{3F4A56}
+
+\begin{document}
+% ==== parameters (edit these) ============================================
+\def\blockH{2.85}
+\def\latentH{1.0}
+\def\trapW{2.45}
+\def\blockW{1.05}
+\def\latentW{1.0}
+\def\gap{0.75}
+\def\inputlabel{Input $x$}
+\def\encoderlabel{Encoder}
+\def\latentlabel{$z$}
+\def\decoderlabel{Decoder}
+\def\outputlabel{Output $\hat{x}$}
+% =========================================================================
+
+\begin{tikzpicture}[
+    >={Stealth[length=2.2mm]},
+    ioblock/.style={
+      draw=tlblue!55!black, line width=0.85pt, fill=tlblue!8, rounded corners=3pt,
+    },
+    trap/.style={line width=0.9pt, rounded corners=2pt},
+    latentblk/.style={
+      draw=tlorange!85!black, line width=0.95pt, fill=tlorange!18, rounded corners=3pt,
+    },
+    lbl/.style={font=\sffamily\small, text=tlgray},
+    midlbl/.style={font=\sffamily\small, text=tlgray!90!black},
+    flow/.style={draw=tlgray!60, line width=0.85pt, ->},
+  ]
+  \pgfmathsetmacro{\bh}{\blockH/2}
+  \pgfmathsetmacro{\lh}{\latentH/2}
+  \pgfmathsetmacro{\xiL}{0}
+  \pgfmathsetmacro{\xiR}{\xiL+\blockW}
+  \pgfmathsetmacro{\xeL}{\xiR+\gap}
+  \pgfmathsetmacro{\xeR}{\xeL+\trapW}
+  \pgfmathsetmacro{\xzL}{\xeR+\gap}
+  \pgfmathsetmacro{\xzR}{\xzL+\latentW}
+  \pgfmathsetmacro{\xdL}{\xzR+\gap}
+  \pgfmathsetmacro{\xdR}{\xdL+\trapW}
+  \pgfmathsetmacro{\xoL}{\xdR+\gap}
+  \pgfmathsetmacro{\xoR}{\xoL+\blockW}
+  \pgfmathsetmacro{\xiC}{(\xiL+\xiR)/2}
+  \pgfmathsetmacro{\xeC}{(\xeL+\xeR)/2}
+  \pgfmathsetmacro{\xzC}{(\xzL+\xzR)/2}
+  \pgfmathsetmacro{\xdC}{(\xdL+\xdR)/2}
+  \pgfmathsetmacro{\xoC}{(\xoL+\xoR)/2}
+
+  % Encoder: wide → narrow (steel blue)
+  \filldraw[trap, fill=tlblue!14, draw=tlblue!80!black]
+    (\xeL,\bh) -- (\xeL,-\bh) -- (\xeR,-\lh) -- (\xeR,\lh) -- cycle;
+  \node[midlbl] (enc) at (\xeC,0) {\encoderlabel};
+
+  % Decoder: narrow → wide (sage teal — paired opposite of encoder)
+  \filldraw[trap, fill=tlteal!14, draw=tlteal!75!black]
+    (\xdL,\lh) -- (\xdL,-\lh) -- (\xdR,-\bh) -- (\xdR,\bh) -- cycle;
+  \node[midlbl] (dec) at (\xdC,0) {\decoderlabel};
+
+  % I/O bars share the primary blue family (not flat gray slabs)
+  \node[ioblock, minimum width=\blockW cm, minimum height=\blockH cm] (input)  at (\xiC,0) {};
+  \node[ioblock, minimum width=\blockW cm, minimum height=\blockH cm] (output) at (\xoC,0) {};
+  \node[lbl, below=4pt of input]  {\inputlabel};
+  \node[lbl, below=4pt of output] {\outputlabel};
+
+  % Latent bottleneck (copper accent)
+  \node[latentblk, minimum width=\latentW cm, minimum height=\latentH cm] (z) at (\xzC,0) {};
+  \node[font=\sffamily\small\bfseries, text=tlorange!80!black] at (\xzC,0) {\latentlabel};
+
+  \draw[flow] (\xiR,0) -- (\xeL,0);
+  \draw[flow] (\xeR,0) -- (\xzL,0);
+  \draw[flow] (\xzR,0) -- (\xdL,0);
+  \draw[flow] (\xdR,0) -- (\xoL,0);
+\end{tikzpicture}
+\end{document}

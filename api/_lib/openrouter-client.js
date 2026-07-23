@@ -75,8 +75,89 @@ function mergeTikzLibraries(libraryList) {
     return libraries.join(", ");
 }
 
-function normalizeLatex(content) {
-    const latex = content.replace(/```latex\n?/gi, "").replace(/```\n?/g, "").trim();
+function stripProseLeakage(latex) {
+    let text = latex.replace(/```(?:latex|tex)?\n?/gi, "").replace(/```/g, "").trim();
+
+    // Drop leading English preamble the model sometimes adds.
+    const docClass = text.search(/\\documentclass\b/);
+    const usepackage = text.search(/\\usepackage\b/);
+    const beginTikz = text.search(/\\begin\s*\{tikzpicture\}/);
+    const starts = [docClass, usepackage, beginTikz].filter((i) => i >= 0);
+    if (starts.length > 0) {
+        const start = Math.min(...starts);
+        // Keep a short comment block immediately above \documentclass if present.
+        const sliced = text.slice(start);
+        text = sliced;
+    }
+
+    // Remove float wrappers / captions that break standalone (before cutting prose).
+    text = text.replace(/\\begin\s*\{figure\*?\}[\s\S]*?\\end\s*\{figure\*?\}/gi, (block) => {
+        const tikz = block.match(/\\begin\s*\{tikzpicture\}[\s\S]*?\\end\s*\{tikzpicture\}/);
+        return tikz ? tikz[0] : "";
+    });
+    text = text.replace(/\\caption\s*\*?(\[[^\]]*\])?\s*\{(?:[^{}]|\{[^{}]*\})*\}/gi, "");
+    text = text.replace(/\\label\s*\{[^}]*\}/gi, "");
+
+    // Cut junk after the main graphic environment. Models often append
+    // "This code creates..." + \caption/\end{figure} after \end{tikzpicture},
+    // which still renders inside \begin{document}…\end{document}.
+    const endTikz = text.search(/\\end\s*\{tikzpicture\}/);
+    const endTabular = text.search(/\\end\s*\{(?:tabular|longtable)\}/);
+    const endAxis = text.search(/\\end\s*\{axis\}/);
+    const graphicEnds = [endTikz, endTabular, endAxis].filter((i) => i >= 0);
+    if (graphicEnds.length > 0) {
+        const end = Math.max(...graphicEnds);
+        const close = text.slice(end).match(/^\\end\s*\{[^}]+\}/);
+        const closeLen = close ? close[0].length : 0;
+        const head = text.slice(0, end + closeLen);
+        if (/\\documentclass\b/.test(head)) {
+            text = `${head}\n\\end{document}`;
+        } else if (/\\begin\s*\{tikzpicture\}/.test(head)) {
+            text = `\\documentclass[border=6pt]{standalone}
+\\usepackage{tikz}
+\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}
+\\begin{document}
+${head}
+\\end{document}`;
+        } else {
+            text = `${head}\n\\end{document}`;
+        }
+    } else {
+        const endDoc = text.search(/\\end\s*\{document\}/);
+        if (endDoc >= 0) {
+            text = text.slice(0, endDoc + "\\end{document}".length);
+        }
+    }
+
+    // Drop trailing prose lines after \end{document} (defense in depth).
+    text = text.replace(/\\end\s*\{document\}[\s\S]*$/i, "\\end{document}");
+
+    // Drop obvious English sentences left inside the file (outside comments).
+    text = text
+        .split("\n")
+        .filter((line) => {
+            const t = line.trim();
+            if (!t) return true;
+            if (t.startsWith("%")) return true;
+            if (t.startsWith("\\")) return true;
+            if (/^[{}\[\]()]+$/.test(t)) return true;
+            // Prose leak: "This code creates...", "Here is the updated..."
+            if (/^(here is|this code|the (following|updated|complete)|i have|below is|note that)\b/i.test(t)) {
+                return false;
+            }
+            if (/^[A-Z][a-z].*\b(diagram|icon|arrow|guideline|code)\b/i.test(t) && !/\\/.test(t)) {
+                return false;
+            }
+            return true;
+        })
+        .join("\n")
+        .trim();
+
+    return text;
+}
+
+export function normalizeLatex(content) {
+    let latex = stripProseLeakage(content);
 
     if (!/\\begin\s*\{tikzpicture\}/i.test(latex)) {
         return latex;
@@ -86,21 +167,57 @@ function normalizeLatex(content) {
     const existingLibraries = latex.match(tikzLibraryRegex);
 
     if (existingLibraries) {
-        return latex.replace(
+        latex = latex.replace(
             tikzLibraryRegex,
-            `\\usetikzlibrary{${mergeTikzLibraries(existingLibraries[1])}}`
+            `\\usetikzlibrary{${mergeTikzLibraries(existingLibraries[1])}}`,
         );
+    } else {
+        const tikzPackageRegex = /(\\usepackage(?:\[[^\]]*\])?\s*\{tikz\})/i;
+        if (tikzPackageRegex.test(latex)) {
+            latex = latex.replace(
+                tikzPackageRegex,
+                `$1\n\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}`,
+            );
+        } else if (/\\documentclass\b/.test(latex)) {
+            latex = latex.replace(
+                /(\\documentclass(?:\[[^\]]*\])?\s*\{[^}]+\})/,
+                `$1\n\\usepackage{tikz}\n\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}`,
+            );
+        } else {
+            latex = `\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}\n${latex}`;
+        }
     }
 
-    const tikzPackageRegex = /(\\usepackage(?:\[[^\]]*\])?\s*\{tikz\})/i;
-    if (tikzPackageRegex.test(latex)) {
-        return latex.replace(
-            tikzPackageRegex,
-            `$1\n\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}`
-        );
-    }
+    // Incomplete trailing \\draw[...] line (truncated generation) — drop it.
+    latex = latex.replace(/\n\s*\\draw\[[^\]]*,\s*$/m, "\n");
+    latex = latex.replace(/\n\s*\\draw\[[^\]]*\]\s*$/m, "\n");
 
-    return `\\usetikzlibrary{${DEFAULT_TIKZ_LIBRARIES.join(", ")}}\n${latex}`;
+    // Drop \\draw lines that reference node names never defined with \\node (...).
+    // Catches half-edited seeds that leave orphan arrows (stray horizontal lines).
+    latex = stripOrphanDraws(latex);
+
+    return latex.trim();
+}
+
+function stripOrphanDraws(latex) {
+    const pictureMatch = latex.match(/\\begin\s*\{tikzpicture\}([\s\S]*?)\\end\s*\{tikzpicture\}/i);
+    if (!pictureMatch) return latex;
+
+    const body = pictureMatch[1];
+    const defined = new Set();
+    for (const m of body.matchAll(/\\node\s*(?:\[[^\]]*\])?\s*\(([^)]+)\)/g)) {
+        defined.add(m[1].trim());
+    }
+    if (defined.size === 0) return latex;
+
+    const cleanedBody = body.replace(/\\draw\b[\s\S]*?;/g, (draw) => {
+        const refs = [...draw.matchAll(/\(\s*([A-Za-z][\w-]*)\s*(?:\.[a-z]+)?\s*\)/gi)].map((m) => m[1]);
+        if (refs.length === 0) return draw;
+        const orphan = refs.some((name) => !defined.has(name));
+        return orphan ? "" : draw;
+    });
+
+    return latex.replace(pictureMatch[0], `\\begin{tikzpicture}${cleanedBody}\\end{tikzpicture}`);
 }
 
 function getConfiguredModels() {

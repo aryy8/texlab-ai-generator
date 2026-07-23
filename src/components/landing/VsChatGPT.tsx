@@ -1,5 +1,5 @@
 /**
- * OpenTikZ-style comparison — paired rows so both columns stay even.
+ * Comparison section — paired rows so both columns stay even.
  */
 export function VsChatGPT() {
   const rows = [

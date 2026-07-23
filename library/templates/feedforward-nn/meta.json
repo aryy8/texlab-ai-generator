@@ -1,0 +1,34 @@
+{
+  "id": "feedforward-nn",
+  "name": "Feed-forward neural network",
+  "kind": "template",
+  "tags": [
+    "neural",
+    "neural network",
+    "mlp",
+    "feed-forward",
+    "feedforward",
+    "fully connected",
+    "hidden layer",
+    "neurons"
+  ],
+  "styles": ["neural-network"],
+  "galleryId": "neural-network",
+  "requires": ["tikz"],
+  "edit": {
+    "parameters": ["layersizes", "layerlabels", "layersep", "neuronsep", "neuronsize"],
+    "nodeNaming": "L<layer>-<neuron> (1-indexed)",
+    "operations": [
+      "Change layer sizes via \\def\\layersizes{...}",
+      "Rename labels via \\def\\layerlabels{...} (same count as layers)",
+      "Recolor neurons: tlblue → tlteal / tlorange in neuron/.style",
+      "Tighten/widen with \\layersep and \\neuronsep"
+    ],
+    "invariants": [
+      "Edges stay on pgf layer edges behind neurons",
+      "Only tl* palette colors",
+      "Standalone compilable"
+    ]
+  },
+  "prompt": "Publication-quality TikZ feed-forward neural network: four layers with 4, 6, 6, and 2 circular neurons, fully connected between adjacent layers. Steel-blue neuron fills with darker outlines, thin slate-gray edges drawn behind the nodes. Sans-serif gray labels under each column: Input, Hidden, Hidden, Output. Vertically center each layer, even horizontal spacing, standalone academic style — not a flowchart of boxes."
+}

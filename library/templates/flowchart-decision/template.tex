@@ -1,0 +1,65 @@
+\documentclass[border=10pt]{standalone}
+
+% teXlab library — flowchart (decision + retry). House palette + role mapping.
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, shapes.misc}
+
+\definecolor{tlblue}{HTML}{2E6B8A}
+\definecolor{tlteal}{HTML}{3D8B7A}
+\definecolor{tlorange}{HTML}{B86B2C}
+\definecolor{tlpurple}{HTML}{6E5A7E}
+\definecolor{tlgray}{HTML}{3F4A56}
+
+\begin{document}
+% ==== parameters (edit these) ============================================
+\def\rowsep{1.05}
+\def\boxminw{2.5}
+\def\boxminh{1.0}
+\def\branchsep{1.9}
+\def\startlabel{Start}
+\def\readlabel{Read input}
+\def\checklabel{Valid?}
+\def\proclabel{Process data}
+\def\endlabel{End}
+\def\errorlabel{Report error}
+\def\yeslabel{Yes}
+\def\nolabel{No}
+\def\looplabel{retry}
+% =========================================================================
+
+\begin{tikzpicture}[
+    node distance=\rowsep cm,
+    >={Stealth[length=2.2mm]},
+    base/.style={
+      line width=0.85pt, align=center, font=\sffamily\small,
+      minimum width=\boxminw cm, minimum height=\boxminh cm,
+    },
+    % Start/End share the primary steel-blue family (not a separate teal pill).
+    terminal/.style={base, shape=rounded rectangle, rounded corners=5pt,
+      draw=tlblue!80!black, fill=tlblue!14},
+    process/.style={base, rounded corners=2.5pt,
+      draw=tlblue!70!black, fill=tlblue!7},
+    decision/.style={base, shape=diamond, aspect=2.0, inner sep=1.5pt,
+      draw=tlteal!75!black, fill=tlteal!16, minimum width=2.7cm},
+    flow/.style={draw=tlgray!65, line width=0.85pt, ->},
+    loop/.style={draw=tlorange!85!black, line width=1.05pt, ->},
+    elabel/.style={font=\sffamily\footnotesize, text=tlgray},
+  ]
+
+  \node[terminal] (start) {\startlabel};
+  \node[process,  below=of start] (read)  {\readlabel};
+  \node[decision, below=of read]  (check) {\checklabel};
+  \node[process,  below=of check] (proc)  {\proclabel};
+  \node[terminal, below=of proc]  (end)   {\endlabel};
+  \node[process, right=\branchsep cm of check] (error) {\errorlabel};
+
+  \draw[flow] (start) -- (read);
+  \draw[flow] (read)  -- (check);
+  \draw[flow] (check) -- (proc) node[midway, right, elabel] {\yeslabel};
+  \draw[flow] (proc)  -- (end);
+  \draw[flow] (check) -- (error) node[midway, above, elabel] {\nolabel};
+  \draw[loop] (error.north) |- (read.east)
+    node[pos=0.72, above, font=\sffamily\footnotesize, text=tlorange!85!black] {\looplabel};
+
+\end{tikzpicture}
+\end{document}

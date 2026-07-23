@@ -1,0 +1,52 @@
+{
+  "id": "system-block",
+  "name": "System block diagram",
+  "kind": "template",
+  "tags": [
+    "architecture",
+    "system",
+    "microservice",
+    "gateway",
+    "backend",
+    "api gateway",
+    "block diagram",
+    "system diagram",
+    "client",
+    "database",
+    "cache"
+  ],
+  "styles": ["architecture"],
+  "galleryId": "system-architecture",
+  "requires": ["tikz", "positioning", "arrows.meta", "shapes.geometric", "fit", "backgrounds"],
+  "edit": {
+    "parameters": [
+      "rowsep",
+      "colsep",
+      "boxminw",
+      "boxminh",
+      "clientlabel",
+      "gatewaylabel",
+      "svconelabel",
+      "svctwolabel",
+      "dblabel",
+      "cachelabel",
+      "grouplabel"
+    ],
+    "nodeNaming": "client, gateway, svc1, svc2, db, cache, backend",
+    "operations": [
+      "Rename via \\def\\*label{...}",
+      "Add services with above right=of / below right=of gateway",
+      "Recolor: external=tlgray dashed, process=tlblue, db=tlteal cylinder, cache=tlorange cylinder",
+      "Resize group with fit=(...) on background layer",
+      "Adjust \\rowsep / \\colsep"
+    ],
+    "invariants": [
+      "External client is dashed gray; services are blue cards; stores are cylinders",
+      "Backend group is a dashed fit box drawn on the background layer",
+      "Only tl* house palette",
+      "Standalone compilable",
+      "Match request scope — do not keep unused Client/Gateway nodes if the user asked for fewer components"
+    ]
+  },
+  "prompt": "Publication-quality TikZ system architecture: dashed gray Client on the left, steel-blue API Gateway, then Service A / Service B branching above and below, with a sage-teal Database cylinder and copper-orange Cache cylinder to the right. Dashed steel-blue Backend group box fitting the services and stores. Stealth arrows, sans-serif labels, parametric spacing — 2D architecture layout, not a single vertical flowchart."
+}
