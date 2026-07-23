@@ -74,39 +74,40 @@
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 32% 17%;
-    --card-foreground: 210 40% 98%;
-    --popover: 215 24% 26%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 198 93% 59%;
-    --primary-foreground: 204 80% 15%;
-    --secondary: 212 26% 83%;
-    --secondary-foreground: 228 84% 4%;
-    --muted: 215 16% 46%;
-    --muted-foreground: 210 40% 98%;
-    --accent: 228 84% 4%;
-    --accent-foreground: 215 20% 65%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 85% 97%;
-    --border: 215 19% 34%;
-    --input: 215 19% 34%;
-    --ring: 198 93% 59%;
-    --checker-color: 0 0% 8%;
+    /* Pitch-black Cursor agent desk (matches screenshot) */
+    --background: 0 0% 2%; /* #050505 */
+    --foreground: 0 0% 92%; /* #ebebeb */
+    --card: 0 0% 2%;
+    --card-foreground: 0 0% 92%;
+    --popover: 0 0% 6%; /* #0f0f0f */
+    --popover-foreground: 0 0% 92%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 6%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 228 6% 16%; /* #25262b — user bubbles + input fill */
+    --muted-foreground: 0 0% 52%; /* #858585 */
+    --accent: 0 0% 6%;
+    --accent-foreground: 0 0% 92%;
+    --destructive: 355 78% 64%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 3% 25%; /* #3e3f42 */
+    --input: 228 6% 16%; /* #25262b */
+    --ring: 0 0% 100%;
+    --checker-color: 0 0% 2%;
     --chart-1: 199 95% 73%;
     --chart-2: 211 96% 78%;
-    --chart-3: 215 20% 65%;
-    --chart-4: 215 16% 46%;
-    --chart-5: 215 19% 34%;
-    --sidebar: 217 32% 17%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 198 93% 59%;
-    --sidebar-primary-foreground: 204 80% 15%;
-    --sidebar-accent: 215 20% 65%;
-    --sidebar-accent-foreground: 228 84% 4%;
-    --sidebar-border: 215 19% 34%;
-    --sidebar-ring: 198 93% 59%;
+    --chart-3: 0 0% 55%;
+    --chart-4: 0 0% 40%;
+    --chart-5: 0 0% 30%;
+    --sidebar: 0 0% 2%;
+    --sidebar-foreground: 0 0% 92%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 7%;
+    --sidebar-accent: 0 0% 6%;
+    --sidebar-accent-foreground: 0 0% 92%;
+    --sidebar-border: 220 3% 25%;
+    --sidebar-ring: 0 0% 100%;
     --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
     --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
     --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
@@ -115,6 +116,137 @@
     --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
     --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
     --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  }
+
+  /* Workspace theme tokens — on html so portaled popovers inherit them */
+  html {
+    --ws-bg: #f8fafc;
+    --ws-bar: #f1f5f9;
+    --ws-input: #ffffff;
+    --ws-input-border: #cbd5e1;
+    --ws-input-border-focus: #94a3b8;
+    --ws-text: #0f172a;
+    --ws-text-muted: #64748b;
+    --ws-divider: #e2e8f0;
+    --ws-hover: rgba(15, 23, 42, 0.06);
+    --ws-menu-hover: #f1f5f9;
+    --ws-send-bg: #0f172a;
+    --ws-send-text: #ffffff;
+    --ws-send-hover: #1e293b;
+    --ws-send-disabled-bg: #e2e8f0;
+    --ws-send-disabled-text: #94a3b8;
+  }
+
+  html.dark {
+    --ws-bg: #050505;
+    --ws-bar: #0f0f0f;
+    --ws-input: #25262b;
+    --ws-input-border: #3e3f42;
+    --ws-input-border-focus: #4a4b4e;
+    --ws-text: #ebebeb;
+    --ws-text-muted: #858585;
+    --ws-divider: #2a2a2a;
+    --ws-hover: rgba(255, 255, 255, 0.06);
+    --ws-menu-hover: #2f3036;
+    --ws-send-bg: #ffffff;
+    --ws-send-text: #171717;
+    --ws-send-hover: #e4e4e4;
+    --ws-send-disabled-bg: #3e3f42;
+    --ws-send-disabled-text: #858585;
+  }
+
+  .workspace-desk {
+    background-color: var(--ws-bg);
+    color: var(--ws-text);
+  }
+
+  .workspace-desk .ws-composer {
+    background-color: var(--ws-bar);
+    border-top: 1px solid var(--ws-divider);
+  }
+
+  .workspace-desk .ws-composer-box {
+    background-color: var(--ws-input);
+    border: 1px solid var(--ws-input-border);
+    border-radius: 14px;
+  }
+
+  .workspace-desk .ws-composer-box:focus-within {
+    border-color: var(--ws-input-border-focus);
+  }
+
+  .workspace-desk .ws-send {
+    background-color: var(--ws-send-bg) !important;
+    color: var(--ws-send-text) !important;
+  }
+
+  .workspace-desk .ws-send:hover:not(:disabled) {
+    background-color: var(--ws-send-hover) !important;
+  }
+
+  .workspace-desk .ws-send:disabled {
+    background-color: var(--ws-send-disabled-bg) !important;
+    color: var(--ws-send-disabled-text) !important;
+  }
+
+  .workspace-desk .ws-icon-btn {
+    color: var(--ws-text-muted);
+  }
+
+  .workspace-desk .ws-icon-btn:hover {
+    background-color: var(--ws-hover);
+    color: var(--ws-text);
+  }
+
+  .ws-menu-trigger {
+    color: var(--ws-text-muted);
+  }
+
+  .ws-menu-trigger:hover {
+    color: var(--ws-text);
+  }
+
+  .ws-menu {
+    background-color: var(--ws-input) !important;
+    border-color: var(--ws-input-border) !important;
+    color: var(--ws-text);
+  }
+
+  .ws-menu-item {
+    color: var(--ws-text-muted);
+  }
+
+  .ws-menu-item:hover,
+  .ws-menu-item-active {
+    background-color: var(--ws-menu-hover);
+    color: var(--ws-text);
+  }
+
+  .ws-pill {
+    border-color: var(--ws-input-border);
+    color: var(--ws-text-muted);
+  }
+
+  .ws-pill:hover {
+    border-color: var(--ws-input-border-focus);
+    color: var(--ws-text);
+  }
+
+  .ws-pill-active {
+    border-color: var(--ws-text);
+    background-color: var(--ws-text);
+    color: var(--ws-bg);
+  }
+
+  .workspace-desk .ws-panel {
+    background-color: var(--ws-bg);
+    border-color: var(--ws-divider);
+  }
+
+  .workspace-desk .ws-footer {
+    background-color: var(--ws-bar);
+    border-color: var(--ws-divider);
+    color: var(--ws-text-muted);
   }
 }
 
@@ -266,5 +398,36 @@
       linear-gradient(-45deg, transparent 75%, hsl(var(--checker-color)) 75%);
     background-size: var(--checker-size) var(--checker-size);
     background-position: 0 0, 0 calc(var(--checker-size) / 2), calc(var(--checker-size) / 2) calc(var(--checker-size) * -0.5), calc(var(--checker-size) * -0.5) 0px;
+  }
+
+  /* Landing footer — grainy dissolve; top fades into checker (no partition line) */
+  .landing-gradient-footer {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 100%);
+  }
+
+  .landing-gradient-footer__fade {
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--background) / 0) 0%,
+      hsl(var(--background) / 0.55) 10%,
+      hsl(0 0% 94%) 18%,
+      hsl(0 0% 83%) 30%,
+      hsl(0 0% 70%) 42%,
+      hsl(0 0% 55%) 54%,
+      hsl(0 0% 42%) 66%,
+      hsl(0 0% 32%) 78%,
+      hsl(0 0% 24%) 90%,
+      hsl(0 0% 16%) 100%
+    );
+  }
+
+  .landing-gradient-footer__grain {
+    opacity: 0.62;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 100%);
   }
 }

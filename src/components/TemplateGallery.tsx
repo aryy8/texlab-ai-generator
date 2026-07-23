@@ -29,7 +29,7 @@ function TemplateCard({
     <button
       type="button"
       onClick={() => onSelect(template.id)}
-      className="group flex flex-col border border-border bg-card text-left transition-all hover:border-foreground/50 hover:shadow-md"
+      className="group flex flex-col border border-border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/50 hover:shadow-md"
     >
       <div className="relative flex h-36 items-center justify-center overflow-hidden border-b border-border bg-white">
         <TemplatePreview template={template} />
