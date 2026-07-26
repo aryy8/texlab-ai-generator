@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
+import { useInView } from "@/hooks/use-in-view";
 
 type FitMode = "column" | "fullpage";
 
@@ -21,6 +22,7 @@ const BEAT_ORDER_FULLPAGE: Beat[] = ["generate", "compile", "fit"];
  * Column mode intentionally shows content wider than the guides, then scales it in.
  */
 export function FitDemo() {
+  const { ref, inView } = useInView<HTMLElement>();
   const [fit, setFit] = useState<FitMode>("column");
   const [beat, setBeat] = useState<Beat>("fit");
   const [seq, setSeq] = useState(0); // bump to restart the loop
@@ -49,6 +51,10 @@ export function FitDemo() {
       setBeat("fit");
       return;
     }
+    if (!inView) {
+      setBeat("fit");
+      return;
+    }
 
     let cancelled = false;
     let timer: number | undefined;
@@ -71,7 +77,7 @@ export function FitDemo() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [fit, seq]);
+  }, [fit, seq, inView]);
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (reducedRef.current || !frameRef.current) return;
@@ -120,7 +126,7 @@ export function FitDemo() {
   const isCompiling = beat === "compile";
 
   return (
-    <section id="fit-demo" className="mx-auto max-w-5xl px-6 py-14">
+    <section ref={ref} id="fit-demo" className="mx-auto max-w-5xl px-6 py-14">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">

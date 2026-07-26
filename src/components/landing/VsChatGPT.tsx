@@ -13,6 +13,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useInView } from "@/hooks/use-in-view";
 
 type Beat = "prompt" | "respond" | "result";
 
@@ -73,6 +74,7 @@ interface VsChatGPTProps {
 }
 
 export function VsChatGPT({ mockDark }: VsChatGPTProps) {
+  const { ref, inView } = useInView<HTMLElement>();
   const [beat, setBeat] = useState<Beat>("result");
   const [reduced, setReduced] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,10 @@ export function VsChatGPT({ mockDark }: VsChatGPTProps) {
 
   useEffect(() => {
     if (reduced) {
+      setBeat("result");
+      return;
+    }
+    if (!inView) {
       setBeat("result");
       return;
     }
@@ -108,7 +114,7 @@ export function VsChatGPT({ mockDark }: VsChatGPTProps) {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [reduced]);
+  }, [reduced, inView]);
 
   // Scroll chat to the ending prose when the result beat lands.
   useEffect(() => {
@@ -142,7 +148,7 @@ export function VsChatGPT({ mockDark }: VsChatGPTProps) {
   const txDone = beat === "result";
 
   return (
-    <section className="mx-auto max-w-5xl px-6 py-14">
+    <section ref={ref} className="mx-auto max-w-5xl px-6 py-14">
       <div className="mb-6">
         <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           Why teXlab

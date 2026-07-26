@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Download, ExternalLink, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useInView } from "@/hooks/use-in-view";
 
 type Phase = "desk" | "zoom";
 
@@ -19,6 +20,7 @@ interface ExportProofProps {
  * Focus uses a per-button border (always border-2 so it fades, not jumps).
  */
 export function ExportProof({ mockDark }: ExportProofProps) {
+  const { ref, inView } = useInView<HTMLElement>();
   const [phase, setPhase] = useState<Phase>("desk");
   const [active, setActive] = useState(-1);
   const [copied, setCopied] = useState(false);
@@ -36,6 +38,12 @@ export function ExportProof({ mockDark }: ExportProofProps) {
     if (reduced) {
       setPhase("zoom");
       setActive(0);
+      return;
+    }
+    if (!inView) {
+      setPhase("desk");
+      setActive(-1);
+      setCopied(false);
       return;
     }
     let cancelled = false;
@@ -86,12 +94,12 @@ export function ExportProof({ mockDark }: ExportProofProps) {
       cancelled = true;
       timers.forEach((id) => window.clearTimeout(id));
     };
-  }, [reduced]);
+  }, [reduced, inView]);
 
   const zoomed = phase === "zoom";
 
   return (
-    <section className="mx-auto max-w-5xl px-6 pb-20 pt-14 sm:pb-24">
+    <section ref={ref} className="mx-auto max-w-5xl px-6 pb-20 pt-14 sm:pb-24">
       <div className="mb-6">
         <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           Export
@@ -220,17 +228,6 @@ export function ExportProof({ mockDark }: ExportProofProps) {
                 </div>
               </section>
             </div>
-          </div>
-
-          <div
-            className={cn(
-              "pointer-events-none absolute bottom-4 left-0 right-0 flex justify-center transition-opacity duration-500",
-              zoomed ? "opacity-100" : "opacity-0",
-            )}
-          >
-            <p className="rounded-md border border-[var(--ws-divider)] bg-[var(--ws-bg)]/95 px-3 py-1.5 font-mono text-[10px] text-[var(--ws-text-muted)] shadow-sm backdrop-blur-sm">
-              Source bar · .zip · Overleaf · Copy
-            </p>
           </div>
         </div>
       </div>

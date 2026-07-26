@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { LatexCode } from "@/components/LatexCode";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
+import { MockThemeToggle } from "@/components/landing/MockThemeToggle";
+import { useInView } from "@/hooks/use-in-view";
 
 /**
  * Faithful mock of /app: same chrome, 30 | 35 | 35 panel ratios,
@@ -114,16 +116,23 @@ function BlueprintOverlay({ stageLabel }: { stageLabel: string }) {
 
 interface WorkspaceDemoProps {
   mockDark: boolean;
+  onMockDarkChange: (dark: boolean) => void;
 }
 
-export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
+export function WorkspaceDemo({ mockDark, onMockDarkChange }: WorkspaceDemoProps) {
+  const { ref, inView } = useInView<HTMLElement>();
   const [beat, setBeat] = useState<Beat>("ready");
-  const [typed, setTyped] = useState("");
+  const [typed, setTyped] = useState(DEMO_PROMPT);
   const [stageIndex, setStageIndex] = useState(0);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
+      setBeat("ready");
+      setTyped(DEMO_PROMPT);
+      return;
+    }
+    if (!inView) {
       setBeat("ready");
       setTyped(DEMO_PROMPT);
       return;
@@ -148,7 +157,7 @@ export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, []);
+  }, [inView]);
 
   useEffect(() => {
     if (beat !== "prompt") {
@@ -197,7 +206,7 @@ export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
   const pipelineOk = isReady;
 
   return (
-    <section id="workspace-demo" className="mx-auto max-w-5xl px-6 py-14">
+    <section ref={ref} id="workspace-demo" className="mx-auto max-w-5xl px-6 py-14">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -208,6 +217,10 @@ export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
           </h2>
         </div>
         <div className="flex items-center gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Mockups
+          </span>
+          <MockThemeToggle dark={mockDark} onDarkChange={onMockDarkChange} />
           <Link
             to="/app"
             className="inline-flex items-center border border-foreground bg-foreground px-3 py-1.5 font-mono text-[11px] text-background transition-opacity hover:opacity-90"
@@ -265,10 +278,10 @@ export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground"
-                title={mockDark ? "Light mode (controlled above)" : "Dark mode (controlled above)"}
-                aria-hidden
-                tabIndex={-1}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[var(--ws-input)] hover:text-[var(--ws-text)]"
+                title={mockDark ? "Switch mockups to light" : "Switch mockups to dark"}
+                aria-label={mockDark ? "Switch mockups to light" : "Switch mockups to dark"}
+                onClick={() => onMockDarkChange(!mockDark)}
               >
                 {mockDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
               </button>

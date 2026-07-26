@@ -21,7 +21,6 @@ import { WorkspaceDemo } from "@/components/landing/WorkspaceDemo";
 import { VsChatGPT } from "@/components/landing/VsChatGPT";
 import { ExportProof } from "@/components/landing/ExportProof";
 import { LandingFooter } from "@/components/landing/LandingFooter";
-import { MockThemeToggle } from "@/components/landing/MockThemeToggle";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -470,9 +469,6 @@ const Index = () => {
             <span className="font-heading text-xl font-bold tracking-tighter">
               te<span className="font-mono">X</span>lab
             </span>
-            <span className="border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              beta
-            </span>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -819,15 +815,7 @@ const Index = () => {
         />
 
         <FitDemo />
-        <div className="mx-auto flex max-w-5xl items-center justify-end px-6 pt-4">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Mockups
-            </span>
-            <MockThemeToggle dark={mockDark} onDarkChange={setMockDark} />
-          </div>
-        </div>
-        <WorkspaceDemo mockDark={mockDark} />
+        <WorkspaceDemo mockDark={mockDark} onMockDarkChange={setMockDark} />
         <VsChatGPT mockDark={mockDark} />
         <ExportProof mockDark={mockDark} />
         <LandingFooter />
