@@ -154,5 +154,18 @@
     "aspectRatio": "landscape",
     "documentFit": "standalone",
     "arrowStyle": "solid"
+  },
+  {
+    "id": "inference-serving",
+    "title": "Inference serving",
+    "description": "LB · GPU nodes · feature store",
+    "prompt": "Publication-quality TikZ model inference serving diagram: dashed-gray Client requests flow through a steel-blue Internet cloud and Load balancer into an Inference cluster of two GPU-backed nodes (server + copper-orange GPU icons), which read features from a sage-teal Feature store cylinder. Dashed gray cluster boundary, parametric spacing and labels — deployment / serving architecture, not a training pipeline or decision flowchart.",
+    "outputType": "diagram",
+    "style": "architecture",
+    "colorMode": "academic",
+    "density": "normal",
+    "aspectRatio": "landscape",
+    "documentFit": "standalone",
+    "arrowStyle": "solid"
   }
 ]

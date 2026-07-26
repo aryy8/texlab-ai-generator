@@ -1,92 +1,14 @@
 {
-  "generatedAt": "2026-07-22T00:00:00.000Z",
-  "mode": "manual-import",
+  "generatedAt": "2026-07-26T04:53:27.914Z",
+  "mode": "curated",
   "templates": [
     {
-      "id": "cnn-mnist",
+      "id": "inference-serving",
       "ok": true,
-      "preview": "/templates/cnn-mnist.png",
-      "source": "manual-pdf"
-    },
-    {
-      "id": "nlp-pipeline",
-      "ok": true,
-      "preview": "/templates/nlp-pipeline.png",
-      "source": "manual-pdf"
-    },
-    {
-      "id": "model-comparison",
-      "ok": true,
-      "preview": "/templates/model-comparison.png",
-      "source": "manual-pdf"
-    },
-    {
-      "id": "training-loss",
-      "ok": true,
-      "preview": "/templates/training-loss.png",
-      "source": "manual-pdf"
-    },
-    {
-      "id": "confusion-matrix",
-      "ok": true,
-      "preview": "/templates/confusion-matrix.png",
-      "source": "curated"
-    },
-    {
-      "id": "neural-network",
-      "ok": true,
-      "preview": "/templates/neural-network.png",
-      "source": "texlab-library",
-      "importedAt": "2026-07-23T18:25:17.677Z",
-      "libraryId": "feedforward-nn"
-    },
-    {
-      "id": "ablation-table",
-      "ok": true,
-      "preview": "/templates/ablation-table.png",
-      "source": "manual-pdf",
-      "importedAt": "2026-07-22T10:28:59.464Z"
-    },
-    {
-      "id": "system-architecture",
-      "ok": true,
-      "preview": "/templates/system-architecture.png",
-      "source": "texlab-library",
-      "libraryId": "system-block",
-      "importedAt": "2026-07-23T18:37:26.714Z"
-    },
-    {
-      "id": "flowchart-decision",
-      "ok": true,
-      "preview": "/templates/flowchart-decision.png",
-      "source": "texlab-library",
-      "libraryId": "flowchart-decision",
-      "importedAt": "2026-07-23T18:29:15.426Z"
-    },
-    {
-      "id": "encoder-decoder",
-      "ok": true,
-      "preview": "/templates/encoder-decoder.png",
-      "source": "texlab-library",
-      "libraryId": "encoder-decoder",
-      "importedAt": "2026-07-23T18:41:40.572Z"
-    },
-    {
-      "id": "resnet-block",
-      "ok": true,
-      "preview": "/templates/resnet-block.png",
-      "source": "texlab-library",
-      "libraryId": "resnet-block",
-      "importedAt": "2026-07-23T18:44:32.396Z"
-    },
-    {
-      "id": "training-pipeline",
-      "ok": true,
-      "preview": "/templates/training-pipeline.png",
-      "source": "texlab-library",
-      "libraryId": "training-pipeline",
-      "importedAt": "2026-07-23T19:04:12.426Z"
+      "preview": "/templates/inference-serving.png",
+      "fit": null,
+      "rounds": null,
+      "error": null
     }
-  ],
-  "updatedAt": "2026-07-23T19:04:12.429Z"
+  ]
 }

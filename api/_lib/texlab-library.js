@@ -63,12 +63,22 @@ export function matchLibraryTemplate(prompt, style) {
     if (flow) return flow;
   }
 
+  const inferenceHit =
+    /\b(inference\s*(serv|cluster|node)|model\s*serv(ing)?|feature\s*store|gpu[- ]?backed|inference\s*deployment)\b/i.test(text)
+    || (/\binference\b/.test(text) && /\b(gpu|serving|cluster|load\s*balancer)\b/.test(text))
+    || (/\b(load\s*balancer)\b/.test(text) && /\b(gpu|feature\s*store|inference)\b/.test(text));
+
+  if (inferenceHit && !/\b(training\s*pipeline|optimizer|backprop|flowchart|decision\s*diamond|resnet|encoder|decoder)\b/i.test(text)) {
+    const inf = getLibraryTemplate("inference-serving");
+    if (inf) return inf;
+  }
+
   const archHit =
     style === "architecture"
     || /\b(system\s*(block|architecture|diagram)|microservice|api\s*gateway|backend\s*services?)\b/i.test(text)
     || (/\b(client|gateway)\b/.test(text) && /\b(service|database|cache|backend)\b/.test(text));
 
-  if (archHit && !/\b(neural\s*net|mlp|flowchart|decision\s*diamond|encoder|decoder|autoencoder|bottleneck)\b/i.test(text)) {
+  if (archHit && !/\b(neural\s*net|mlp|flowchart|decision\s*diamond|encoder|decoder|autoencoder|bottleneck|inference\s*serv|feature\s*store)\b/i.test(text)) {
     const arch = getLibraryTemplate("system-block");
     if (arch) return arch;
   }

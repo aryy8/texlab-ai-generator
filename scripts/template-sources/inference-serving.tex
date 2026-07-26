@@ -1,0 +1,120 @@
+\documentclass[border=10pt]{standalone}
+
+% teXlab library — model inference serving (client → internet → LB → GPU nodes → feature store)
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.symbols, fit, backgrounds}
+
+\definecolor{tlblue}{HTML}{2E6B8A}
+\definecolor{tlteal}{HTML}{3D8B7A}
+\definecolor{tlorange}{HTML}{B86B2C}
+\definecolor{tlpurple}{HTML}{6E5A7E}
+\definecolor{tlgray}{HTML}{3F4A56}
+
+% ===== icon sub-pictures =================================================
+\newcommand{\cloudpic}{%
+  \begin{tikzpicture}
+    \node[cloud, cloud puffs=11, cloud puff arc=110, aspect=2.2,
+      draw=tlblue!75!black, fill=tlblue!14, line width=0.7pt,
+      minimum width=2cm, minimum height=1.2cm]{};
+  \end{tikzpicture}}
+\newcommand{\serverpic}{%
+  \begin{tikzpicture}[line width=0.55pt]
+    \foreach \i in {0,1,2}{
+      \filldraw[draw=tlblue!75!black, fill=tlblue!12, rounded corners=1pt]
+        (0,\i*0.34) rectangle (1.0,\i*0.34+0.26);
+      \filldraw[tlteal] (0.13,\i*0.34+0.13) circle[radius=0.04];
+    }
+  \end{tikzpicture}}
+\newcommand{\gpupic}{%
+  \begin{tikzpicture}[line width=0.5pt]
+    \filldraw[draw=tlorange!80!black, fill=tlorange!14, rounded corners=1pt] (0,0) rectangle (1.0,0.62);
+    \begin{scope}[shift={(0.31,0.31)}]
+      \filldraw[draw=tlorange!85!black, fill=tlorange!24] (0,0) circle[radius=0.17];
+      \foreach \a in {0,90,180,270}{\draw[tlorange!75!black, line width=0.4pt] (0,0)--(\a:0.15);}
+    \end{scope}
+    \node[font=\sffamily\tiny\bfseries, text=tlorange!85!black] at (0.74,0.31){GPU};
+  \end{tikzpicture}}
+\newcommand{\dbpic}{%
+  \begin{tikzpicture}[line width=0.7pt]
+    \def\rx{0.55}\def\ry{0.20}\def\bh{1.05}
+    \filldraw[draw=tlteal!75!black, fill=tlteal!14]
+      (-\rx,0)--(-\rx,-\bh) arc[start angle=180,end angle=360,x radius=\rx,y radius=\ry]
+      --(\rx,0) arc[start angle=0,end angle=180,x radius=\rx,y radius=\ry]--cycle;
+    \filldraw[draw=tlteal!75!black, fill=tlteal!24] (0,0) ellipse[x radius=\rx,y radius=\ry];
+    \draw[draw=tlteal!75!black, line width=0.5pt]
+      (-\rx,-0.5) arc[start angle=180,end angle=360,x radius=\rx,y radius=\ry];
+  \end{tikzpicture}}
+% ========================================================================
+
+\begin{document}
+% ==== parameters (edit these) ============================================
+\def\colsep{2.85}    % horizontal gap between stages (cm)
+\def\rowsep{1.45}    % vertical offset of stacked inference nodes (cm)
+\def\clientlabel{Client}
+\def\internetlabel{Internet}
+\def\lblabel{Load\\balancer}
+\def\nodeonelabel{Inference node 1}
+\def\nodetwolabel{Inference node 2}
+\def\storelabel{Feature store}
+\def\featurelabel{features}
+\def\clusterlabel{Inference cluster}
+\def\titlelabel{Model inference serving}
+% =========================================================================
+
+\begin{tikzpicture}[
+    >={Stealth[length=2.4mm]},
+    icon/.style={inner sep=1pt},
+    external/.style={
+      draw=tlgray!55, dashed, rounded corners=3pt, fill=tlgray!8,
+      align=center, font=\sffamily\small, minimum height=0.9cm, inner sep=5pt,
+      line width=0.85pt,
+    },
+    process/.style={
+      draw=tlblue!75!black, rounded corners=3pt, fill=tlblue!11,
+      align=center, font=\sffamily\small, minimum height=0.9cm, inner sep=5pt,
+      line width=0.85pt,
+    },
+    nodebox/.style={
+      draw=tlgray!40, rounded corners=4pt, fill=tlgray!4, inner sep=5pt,
+      line width=0.75pt,
+    },
+    slbl/.style={font=\sffamily\footnotesize, text=tlgray},
+    req/.style={draw=tlgray!65, line width=0.95pt, ->},
+    read/.style={draw=tlteal!70!black, line width=0.95pt, ->, dashed},
+  ]
+
+  \node[external] (client) at (0,0) {\clientlabel};
+  \node[icon] (cloud) at (\colsep,0) {\cloudpic};
+  \node[slbl, below=0pt of cloud] {\internetlabel};
+  \node[process] (lb) at (2*\colsep,0) {\lblabel};
+
+  % GPU-backed inference nodes (server + gpu composed in one box)
+  \node[nodebox] (node1) at (3*\colsep,\rowsep)  {\serverpic\hspace{4pt}\gpupic};
+  \node[nodebox] (node2) at (3*\colsep,-\rowsep) {\serverpic\hspace{4pt}\gpupic};
+  \node[slbl, below=1pt of node1] (n1lab) {\nodeonelabel};
+  \node[slbl, below=1pt of node2] (n2lab) {\nodetwolabel};
+
+  \node[icon] (db) at (4.25*\colsep,0) {\dbpic};
+  \node[slbl, below=2pt of db] {\storelabel};
+
+  % request path
+  \draw[req] (client.east) -- (cloud.west);
+  \draw[req] (cloud.east) -- (lb.west);
+  \draw[req] (lb.east) -- (node1.west);
+  \draw[req] (lb.east) -- (node2.west);
+  % feature reads
+  \draw[read] (node1.east) -- (db.west);
+  \draw[read] (node2.east) -- (db.west);
+  \node[slbl, text=tlteal!70!black] at (3.8*\colsep,0.55) {\featurelabel};
+
+  % inference cluster boundary
+  \begin{scope}[on background layer]
+    \node[draw=tlgray!50, dashed, rounded corners=6pt, fill=tlgray!3, inner sep=10pt,
+          fit=(node1)(node2)(n1lab)(n2lab), line width=0.75pt] (cluster) {};
+    \node[slbl, anchor=south west] at ([xshift=2pt, yshift=2pt]cluster.north west) {\clusterlabel};
+  \end{scope}
+
+  \node[font=\sffamily\bfseries, text=tlgray!90!black] at (2.1*\colsep,{\rowsep+1.65}) {\titlelabel};
+
+\end{tikzpicture}
+\end{document}

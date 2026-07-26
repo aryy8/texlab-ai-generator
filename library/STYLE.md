@@ -60,6 +60,12 @@ Fills: light tints (`tlblue!12`–`!18`). Strokes: darkened (`tlblue!80!black`).
 | Training model stage | `tlblue` card |
 | Loss stage | `tlpurple` card |
 | Optimizer / θ update | `tlorange` card + feedback path |
+| Serving client / external | Dashed `tlgray` card |
+| Internet / cloud icon | `tlblue` cloud shape |
+| Load balancer / process | Rounded `tlblue` card |
+| GPU accent | `tlorange` chip inside node |
+| Feature store | `tlteal` cylinder |
+| Inference cluster | Dashed `tlgray` fit box (background) |
 | Main edges | `tlgray!65`, Stealth tips |
 | Retry / highlight edges | `tlorange` |
 

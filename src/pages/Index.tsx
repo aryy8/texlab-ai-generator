@@ -16,6 +16,7 @@ import { ModelSelector } from "@/components/ModelSelector";
 import { loadStoredModel, saveStoredModel, type GenerationModelId } from "@/lib/models";
 import { saveWorkspaceHandoff } from "@/lib/workspace-handoff";
 import { FitDemo } from "@/components/landing/FitDemo";
+import { WorkspaceDemo } from "@/components/landing/WorkspaceDemo";
 import { VsChatGPT } from "@/components/landing/VsChatGPT";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ExportProof } from "@/components/landing/ExportProof";
@@ -788,6 +789,7 @@ const Index = () => {
         </div>
 
         <FitDemo />
+        <WorkspaceDemo />
         <HowItWorks />
         <VsChatGPT />
         <ExportProof />

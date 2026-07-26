@@ -38,6 +38,11 @@
       "id": "training-pipeline",
       "path": "templates/training-pipeline/template.tex",
       "meta": "templates/training-pipeline/meta.json"
+    },
+    {
+      "id": "inference-serving",
+      "path": "templates/inference-serving/template.tex",
+      "meta": "templates/inference-serving/meta.json"
     }
   ],
   "icons": [],

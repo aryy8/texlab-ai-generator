@@ -137,7 +137,28 @@
     --ws-send-disabled-text: #94a3b8;
   }
 
-  html.dark {
+  /* Landing demos: light tokens when desk is not .dark (page theme stays independent) */
+  .workspace-desk:not(.dark) {
+    --ws-bg: #f8fafc;
+    --ws-bar: #f1f5f9;
+    --ws-input: #ffffff;
+    --ws-input-border: #cbd5e1;
+    --ws-input-border-focus: #94a3b8;
+    --ws-text: #0f172a;
+    --ws-text-muted: #64748b;
+    --ws-divider: #e2e8f0;
+    --ws-hover: rgba(15, 23, 42, 0.06);
+    --ws-menu-hover: #f1f5f9;
+    --ws-send-bg: #0f172a;
+    --ws-send-text: #ffffff;
+    --ws-send-hover: #1e293b;
+    --ws-send-disabled-bg: #e2e8f0;
+    --ws-send-disabled-text: #94a3b8;
+  }
+
+  /* Also on .workspace-desk.dark so landing demos inherit desk tokens without flipping page theme */
+  html.dark,
+  .workspace-desk.dark {
     --ws-bg: #050505;
     --ws-bar: #0f0f0f;
     --ws-input: #25262b;

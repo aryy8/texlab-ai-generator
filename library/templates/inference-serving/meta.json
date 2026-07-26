@@ -1,0 +1,52 @@
+{
+  "id": "inference-serving",
+  "name": "Model inference serving",
+  "kind": "template",
+  "tags": [
+    "inference",
+    "serving",
+    "model serving",
+    "load balancer",
+    "gpu",
+    "feature store",
+    "inference cluster",
+    "deployment",
+    "cloud",
+    "inference node"
+  ],
+  "styles": ["architecture"],
+  "galleryId": "inference-serving",
+  "requires": ["tikz", "positioning", "arrows.meta", "shapes.symbols", "fit", "backgrounds"],
+  "edit": {
+    "parameters": [
+      "colsep",
+      "rowsep",
+      "clientlabel",
+      "internetlabel",
+      "lblabel",
+      "nodeonelabel",
+      "nodetwolabel",
+      "storelabel",
+      "featurelabel",
+      "clusterlabel",
+      "titlelabel"
+    ],
+    "nodeNaming": "client, cloud, lb, node1, node2, db, cluster",
+    "operations": [
+      "Rename via \\def\\*label{...}",
+      "Add/remove inference nodes by duplicating nodebox + labels and updating fit=(...)",
+      "Recolor: client=tlgray dashed, cloud/lb/server=tlblue, GPU=tlorange, feature store=tlteal",
+      "Adjust \\colsep / \\rowsep for spacing",
+      "Keep icon macros (\\cloudpic, \\serverpic, \\gpupic, \\dbpic) unless the request drops icons"
+    ],
+    "invariants": [
+      "Left-to-right: Client → Internet cloud → Load balancer → GPU inference nodes → Feature store",
+      "Dashed Inference cluster fit box on background layer around the nodes",
+      "Feature reads are dashed teal arrows; request path is solid gray",
+      "Only tl* house palette",
+      "Standalone compilable",
+      "Match request scope — do not keep unused Client/LB if the user asked for fewer stages"
+    ]
+  },
+  "prompt": "Publication-quality TikZ model inference serving diagram: dashed-gray Client requests flow through a steel-blue Internet cloud and Load balancer into an Inference cluster of two GPU-backed nodes (server + copper-orange GPU icons), which read features from a sage-teal Feature store cylinder. Dashed gray cluster boundary, parametric spacing and labels — deployment / serving architecture, not a training pipeline or decision flowchart."
+}
