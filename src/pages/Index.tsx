@@ -12,15 +12,16 @@ import {
 import { detectFromPrompt } from "@/lib/detect";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
 import { TemplateGallery } from "@/components/TemplateGallery";
+import { TemplateCatalog } from "@/components/TemplateCatalog";
 import { ModelSelector } from "@/components/ModelSelector";
 import { loadStoredModel, saveStoredModel, type GenerationModelId } from "@/lib/models";
 import { saveWorkspaceHandoff } from "@/lib/workspace-handoff";
 import { FitDemo } from "@/components/landing/FitDemo";
 import { WorkspaceDemo } from "@/components/landing/WorkspaceDemo";
 import { VsChatGPT } from "@/components/landing/VsChatGPT";
-import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ExportProof } from "@/components/landing/ExportProof";
 import { LandingFooter } from "@/components/landing/LandingFooter";
+import { MockThemeToggle } from "@/components/landing/MockThemeToggle";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -190,6 +191,8 @@ const Index = () => {
   const [references, setReferences] = useState<Reference[]>([]);
   const [generationModel, setGenerationModel] = useState<GenerationModelId>(() => loadStoredModel());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [mockDark, setMockDark] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const describeCardRef = useRef<HTMLDivElement | null>(null);
@@ -218,6 +221,26 @@ const Index = () => {
 
     return () => clearTimeout(timeout);
   }, [placeholderText, isDeleting, promptIndex]);
+
+  useEffect(() => {
+    if (window.location.hash === "#templates") {
+      setCatalogOpen(true);
+    }
+  }, []);
+
+  const openCatalog = () => {
+    setCatalogOpen(true);
+    if (window.location.hash !== "#templates") {
+      window.history.replaceState(null, "", "#templates");
+    }
+  };
+
+  const handleCatalogOpenChange = (open: boolean) => {
+    setCatalogOpen(open);
+    if (!open && window.location.hash === "#templates") {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  };
 
   const resolvedType: OutputType = outputType ?? "diagram";
   const resolvedStyle = style ?? STYLE_OPTIONS[resolvedType][0].value;
@@ -452,12 +475,13 @@ const Index = () => {
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <a
-              href="#templates"
+            <button
+              type="button"
+              onClick={openCatalog}
               className="hidden text-xs font-mono text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
               Templates
-            </a>
+            </button>
             <Link
               to="/app"
               className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground transition-colors hover:text-foreground"
@@ -784,15 +808,28 @@ const Index = () => {
           </div>
         </section>
 
-        <div id="templates" className="scroll-mt-24">
-          <TemplateGallery onSelect={applyTemplate} />
+        <div id="showcase" className="scroll-mt-24">
+          <TemplateGallery onSelect={applyTemplate} onBrowseAll={openCatalog} />
         </div>
 
+        <TemplateCatalog
+          open={catalogOpen}
+          onOpenChange={handleCatalogOpenChange}
+          onSelect={applyTemplate}
+        />
+
         <FitDemo />
-        <WorkspaceDemo />
-        <HowItWorks />
-        <VsChatGPT />
-        <ExportProof />
+        <div className="mx-auto flex max-w-5xl items-center justify-end px-6 pt-4">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Mockups
+            </span>
+            <MockThemeToggle dark={mockDark} onDarkChange={setMockDark} />
+          </div>
+        </div>
+        <WorkspaceDemo mockDark={mockDark} />
+        <VsChatGPT mockDark={mockDark} />
+        <ExportProof mockDark={mockDark} />
         <LandingFooter />
       </main>
     </div>

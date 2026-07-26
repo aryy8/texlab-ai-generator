@@ -19,8 +19,8 @@ import { LatexCode } from "@/components/LatexCode";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
 
 /**
- * Faithful dark-mode mock of /app: same chrome, 30 | 35 | 35 panel ratios,
- * and the real generate → compile → ready animations (shimmer, blueprint, spinner).
+ * Faithful mock of /app: same chrome, 30 | 35 | 35 panel ratios,
+ * and the real generate → compile → ready animations.
  */
 
 type Beat = "idle" | "prompt" | "generate" | "compile" | "ready";
@@ -80,7 +80,6 @@ const DEMO_LATEX = `\\documentclass[border=10pt]{standalone}
 \\end{document}`;
 
 const DEMO_TEMPLATE = FIGURE_TEMPLATES.find((t) => t.id === "inference-serving");
-/** Same suggestion row as /app, with Inference serving swapped in so the demo story lands on a visible chip. */
 const CHIP_TITLES = [
   ...FIGURE_TEMPLATES.slice(0, 4).map((t) => t.title),
   DEMO_TEMPLATE?.title ?? "Inference serving",
@@ -113,11 +112,14 @@ function BlueprintOverlay({ stageLabel }: { stageLabel: string }) {
   );
 }
 
-export function WorkspaceDemo() {
+interface WorkspaceDemoProps {
+  mockDark: boolean;
+}
+
+export function WorkspaceDemo({ mockDark }: WorkspaceDemoProps) {
   const [beat, setBeat] = useState<Beat>("ready");
   const [typed, setTyped] = useState("");
   const [stageIndex, setStageIndex] = useState(0);
-  const [deskDark, setDeskDark] = useState(true);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -206,26 +208,6 @@ export function WorkspaceDemo() {
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={deskDark}
-            aria-label={deskDark ? "Switch to light mode" : "Switch to dark mode"}
-            onClick={() => setDeskDark((prev) => !prev)}
-            className="relative h-7 w-12 shrink-0 rounded-full bg-foreground/[0.08] transition-colors hover:bg-foreground/[0.12]"
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-foreground shadow-sm transition-transform duration-200 ease-out ${
-                deskDark ? "translate-x-5" : "translate-x-0"
-              }`}
-            >
-              {deskDark ? (
-                <Moon className="h-3 w-3" strokeWidth={1.75} aria-hidden />
-              ) : (
-                <Sun className="h-3 w-3" strokeWidth={1.75} aria-hidden />
-              )}
-            </span>
-          </button>
           <Link
             to="/app"
             className="inline-flex items-center border border-foreground bg-foreground px-3 py-1.5 font-mono text-[11px] text-background transition-opacity hover:opacity-90"
@@ -235,10 +217,10 @@ export function WorkspaceDemo() {
         </div>
       </div>
 
-      {/* Desk shell; theme is local — does not flip the landing page */}
+      {/* Desk shell; theme from shared mock toggle */}
       <div
         className={`workspace-desk overflow-hidden rounded-md border border-[var(--ws-divider)] ${
-          deskDark
+          mockDark
             ? "dark shadow-2xl shadow-black/50"
             : "shadow-lg shadow-slate-900/10"
         }`}
@@ -283,12 +265,12 @@ export function WorkspaceDemo() {
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setDeskDark((prev) => !prev)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title={deskDark ? "Switch to light mode" : "Switch to dark mode"}
-                aria-label={deskDark ? "Switch to light mode" : "Switch to dark mode"}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground"
+                title={mockDark ? "Light mode (controlled above)" : "Dark mode (controlled above)"}
+                aria-hidden
+                tabIndex={-1}
               >
-                {deskDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                {mockDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
               </button>
               <span className="hidden h-7 items-center gap-1.5 rounded-md border border-border px-2.5 font-mono text-xs text-muted-foreground sm:inline-flex">
                 <Archive className="h-3.5 w-3.5" />
