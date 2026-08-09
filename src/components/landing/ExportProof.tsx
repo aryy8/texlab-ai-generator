@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Download, ExternalLink, Sparkles } from "lucide-react";
+import { Check, Copy, Download, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInView } from "@/hooks/use-in-view";
 
@@ -128,7 +128,6 @@ export function ExportProof({ mockDark }: ExportProofProps) {
               <aside className="flex w-[40%] flex-col border-r border-[var(--ws-divider)] bg-[var(--ws-bg)]">
                 <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] px-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5 text-[var(--ws-text)]" />
                     <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ws-text-muted)]">
                       Agent
                     </span>

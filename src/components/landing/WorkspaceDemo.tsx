@@ -11,7 +11,6 @@ import {
   Loader2,
   Moon,
   Paperclip,
-  Sparkles,
   Sun,
   TriangleAlert,
 } from "lucide-react";
@@ -299,7 +298,6 @@ export function WorkspaceDemo({ mockDark, onMockDarkChange }: WorkspaceDemoProps
             <aside className="flex min-h-0 flex-col border-b border-[var(--ws-divider)] bg-[var(--ws-bg)] lg:border-b-0">
               <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] px-3">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-[var(--ws-text)]" />
                   <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ws-text-muted)]">
                     Agent
                   </span>

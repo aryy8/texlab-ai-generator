@@ -46,7 +46,6 @@ import {
   Copy,
   Check,
   ArrowUp,
-  Sparkles,
   History,
   Paperclip,
   X,
@@ -64,6 +63,7 @@ import {
   ExternalLink,
   Moon,
   Sun,
+  Settings,
 } from "lucide-react";
 
 interface LatexVersion {
@@ -910,7 +910,6 @@ const Workspace = () => {
             <aside className="flex h-full min-h-0 flex-col bg-[var(--ws-bg)]">
               <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] px-3">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-[var(--ws-text)]" />
                   <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ws-text-muted)]">
                     Agent
                   </span>
@@ -934,14 +933,8 @@ const Workspace = () => {
                         <button
                           key={template.id}
                           type="button"
-                          onClick={() => {
-                            applyTemplate(template.id);
-                            setChatMessages([
-                              { id: `tpl-${template.id}`, role: "user", content: template.prompt },
-                            ]);
-                            void handleGenerate(template.prompt);
-                          }}
-                          className="rounded-lg border border-[var(--ws-input-border)] bg-[var(--ws-bar)] px-2.5 py-1.5 font-mono text-[10px] text-[var(--ws-text-muted)] transition-colors hover:border-[var(--ws-input-border-focus)] hover:bg-[var(--ws-input)] hover:text-[var(--ws-text)]"
+                          disabled
+                          className="rounded-lg border border-[var(--ws-input-border)] bg-[var(--ws-bar)] px-2.5 py-1.5 font-mono text-[10px] text-[var(--ws-text-muted)] opacity-60 cursor-not-allowed"
                         >
                           {template.title}
                         </button>
@@ -1037,7 +1030,24 @@ const Workspace = () => {
                   handleFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY });
                 }}
               >
-                <div className={`ws-composer-box transition-colors ${isDraggingOver ? "border-[var(--ws-input-border-focus)]" : ""}`}>
+                <div className={`ws-composer-box transition-colors relative overflow-hidden ${isDraggingOver ? "border-[var(--ws-input-border-focus)]" : ""}`}>
+                  {/* Lock Overlay */}
+                  <div className={`absolute inset-0 z-10 flex items-center justify-center transition-all duration-300 p-4 text-center ${
+                    chatDraft.trim()
+                      ? "bg-[var(--ws-input)]/92 backdrop-blur-[4px]"
+                      : "bg-[var(--ws-input)]/35 backdrop-blur-[1.5px]"
+                  }`}>
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <span className="inline-flex items-center rounded-full bg-[var(--ws-send-bg)] px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--ws-send-text)]">
+                        <Settings className="h-3 w-3 animate-spin text-[var(--ws-send-text)] mr-1" style={{ animationDuration: '4s' }} />
+                        Version 2 in progress
+                      </span>
+                      <p className="font-heading text-xs text-[var(--ws-text-muted)]">
+                        Workspace is read-only during system upgrades.
+                      </p>
+                    </div>
+                  </div>
+
                   {references.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 border-b border-[var(--ws-input-border)] px-3 pb-2 pt-2.5">
                       {references.map((reference, index) => (
@@ -1060,6 +1070,7 @@ const Workspace = () => {
                             onClick={() => removeReference(index)}
                             aria-label={`Remove ${reference.name}`}
                             className="text-muted-foreground hover:text-foreground"
+                            disabled
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1085,7 +1096,7 @@ const Workspace = () => {
                         void handleChatSubmit();
                       }
                     }}
-                    disabled={isGenerating || isRefining}
+                    disabled
                   />
 
                   <div className="flex items-center gap-1 px-2 pb-2">
@@ -1095,7 +1106,7 @@ const Workspace = () => {
                         setGenerationModel(model);
                         saveStoredModel(model);
                       }}
-                      disabled={isGenerating || isRefining}
+                      disabled
                     />
 
                     <FormatSelector
@@ -1113,7 +1124,7 @@ const Workspace = () => {
                       onDocumentFitChange={(v) => setDocumentFit(v)}
                       onArrowStyleChange={(v) => setArrowStyle(v)}
                       onAspectRatioChange={(v) => setAspectRatio(v)}
-                      disabled={isGenerating || isRefining}
+                      disabled
                     />
 
                     <div className="ml-auto flex items-center gap-1">
@@ -1121,7 +1132,7 @@ const Workspace = () => {
                         ref={attachButtonRef}
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={references.length >= MAX_REFERENCES}
+                        disabled
                         title="Attach reference"
                         aria-label="Attach reference"
                         className="relative flex h-7 w-7 items-center justify-center rounded-md ws-icon-btn transition-colors disabled:opacity-40"
@@ -1138,7 +1149,7 @@ const Workspace = () => {
                         type="button"
                         size="icon"
                         className="ws-send h-7 w-7 shrink-0 rounded-full border-0 shadow-none"
-                        disabled={!chatDraft.trim() || isGenerating || isRefining}
+                        disabled
                         onClick={() => void handleChatSubmit()}
                         aria-label={output ? "Send refine" : "Generate"}
                       >
