@@ -36,7 +36,6 @@ import {
   Table as TableIcon,
   Sigma,
   LineChart,
-  Settings,
 } from "lucide-react";
 
 const MAX_REFERENCES = 4;
@@ -538,23 +537,6 @@ const Index = () => {
               handleFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY });
             }}
           >
-            {/* Lock Overlay */}
-            <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center transition-all duration-300 p-4 text-center ${
-              input.trim() 
-                ? "bg-background/92 backdrop-blur-[4px]" 
-                : "bg-background/35 backdrop-blur-[1.5px]"
-            }`}>
-              <div className="flex flex-col items-center gap-2.5">
-                <span className="inline-flex items-center rounded-full bg-primary/10 border border-primary/25 px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-primary">
-                  <Settings className="h-3 w-3 animate-spin text-primary mr-1" style={{ animationDuration: '4s' }} />
-                  Version 2 in progress
-                </span>
-                <p className="font-heading text-xs text-muted-foreground max-w-sm">
-                  The generation engine is read-only during version 2 upgrades. Explore the interface or browse templates below.
-                </p>
-              </div>
-            </div>
-
             {isDraggingOver && (
               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80">
                 <div className="flex items-center gap-2 border-2 border-dashed border-primary px-4 py-3 font-mono text-sm text-primary">
@@ -577,7 +559,6 @@ const Index = () => {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate();
               }}
-              disabled
             />
             {references.length > 0 && (
               <div className="flex flex-wrap gap-1.5 px-4 pt-2">

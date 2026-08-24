@@ -25,3 +25,11 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Cursor
+.cursorrules
+
+# OpenTikZ pipeline
+backend/cache/
+backend/work/
+backend/opentikz/.git/

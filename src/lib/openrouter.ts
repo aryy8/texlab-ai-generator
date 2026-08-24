@@ -38,6 +38,45 @@ type GenerationMode = "generate" | "refine" | "repair";
 
 export type GenerationModel = import("@/lib/models").GenerationModelId;
 
+/**
+ * OpenTikZ pipeline (retrieve → generate → compile → judge).
+ * Used for fresh diagram generation from the web app.
+ */
+async function requestOpenTikzGenerate(prompt: string): Promise<string> {
+    const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+    });
+
+    let data: Record<string, unknown> = {};
+    try {
+        data = await response.json();
+    } catch {
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+        throw new Error("The generation pipeline returned an invalid response.");
+    }
+
+    if (!response.ok) {
+        if (typeof data.error === "string") throw new Error(data.error);
+        throw new Error(`Server error: ${response.status}`);
+    }
+
+    const tex = typeof data.tex === "string"
+        ? data.tex
+        : typeof data.content === "string"
+            ? data.content
+            : "";
+    if (!tex.trim()) {
+        throw new Error("The generation pipeline returned empty LaTeX.");
+    }
+    return tex;
+}
+
 async function requestLatex(body: {
     prompt: string;
     preferences: GenerationPreferences;
@@ -67,7 +106,14 @@ export const generateLaTeX = (
     preferences: GenerationPreferences,
     references: Reference[] = [],
     model: GenerationModel = "auto",
-): Promise<string> => requestLatex({ prompt, preferences, references, model });
+): Promise<string> => {
+    // Diagrams go through the OpenTikZ retrieve/generate pipeline.
+    // Tables / equations / plots keep the classic generate-latex path.
+    if (preferences.outputType === "diagram") {
+        return requestOpenTikzGenerate(prompt);
+    }
+    return requestLatex({ prompt, preferences, references, model });
+};
 
 export const refineLaTeX = (
     instruction: string,

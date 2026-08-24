@@ -3,6 +3,7 @@ import type { Plugin, ViteDevServer } from "vite";
 import generateLatex from "./api/generate-latex.js";
 import compileLatex from "./api/compile-latex.js";
 import exportOverleaf from "./api/export-overleaf.js";
+import generateOpenTikz from "./api/generate.js";
 
 type ApiRes = {
   status: (code: number) => ApiRes;
@@ -65,13 +66,15 @@ const postRoutes: Record<string, ApiHandler> = {
   "/api/generate-latex": generateLatex as ApiHandler,
   "/api/compile-latex": compileLatex as ApiHandler,
   "/api/export-overleaf": exportOverleaf as ApiHandler,
+  "/api/generate": generateOpenTikz as ApiHandler,
+  "/generate": generateOpenTikz as ApiHandler,
 };
 
 export function apiDevPlugin(env: Record<string, string>): Plugin {
   return {
     name: "api-dev",
     configureServer(server: ViteDevServer) {
-      for (const key of ["OPEN_ROUTER_API", "OPENROUTER_MODEL", "OPENROUTER_TIER"]) {
+      for (const key of ["OPEN_ROUTER_API", "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_TIER"]) {
         if (env[key]) {
           process.env[key] = env[key];
         }

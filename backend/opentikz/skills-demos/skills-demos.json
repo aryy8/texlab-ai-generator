@@ -1,0 +1,31 @@
+[
+  {
+    "dimension": "recolor",
+    "dimension_label": "Recolor (palette-correct)",
+    "template_id": "database",
+    "prompt": "recolor the database orange",
+    "before_svg": "db-before.svg",
+    "after_svg": "db-orange.svg",
+    "changed": "Every teal element switched to otorange — a palette name, never raw hex."
+  },
+  {
+    "dimension": "add-layer",
+    "dimension_label": "Add a part",
+    "template_id": "neural-net",
+    "prompt": "add a hidden layer",
+    "before_svg": "nn-light.svg",
+    "after_svg": "nn-add.svg",
+    "changed": "A fourth layer inserted before the output; connections and labels update automatically."
+  },
+  {
+    "dimension": "structural",
+    "dimension_label": "Structural edit",
+    "template_id": "encoder-decoder",
+    "prompt": "add a cross-attention block and make it blue",
+    "before_svg": "encdec-before.svg",
+    "after_svg": "encdec-xattn.svg",
+    "changed": "A blue cross-attention block added — the decoder now attends to the encoder (a documented skill op).",
+    "featured": true,
+    "tex_excerpt": "  % decoder → output (existing)\n  \\draw[flow] (\\xdR,0) -- (\\xoL,0);\n+ % cross-attention block (decoder attends to encoder)\n+ \\node[draw=otblue!80!black, fill=otblue!18, rounded corners=2pt,\n+   minimum width=\\trapW cm, minimum height=0.7cm]\n+   (xattn) at (\\xdC,\\bh+0.9) {\\sffamily\\small Cross-Attn};\n+ \\draw[flow, draw=otblue] (enc) to[bend left=20] (xattn);\n+ \\draw[flow, draw=otblue] (xattn) -- (dec);"
+  }
+]

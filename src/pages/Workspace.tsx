@@ -63,7 +63,6 @@ import {
   ExternalLink,
   Moon,
   Sun,
-  Settings,
 } from "lucide-react";
 
 interface LatexVersion {
@@ -933,8 +932,14 @@ const Workspace = () => {
                         <button
                           key={template.id}
                           type="button"
-                          disabled
-                          className="rounded-lg border border-[var(--ws-input-border)] bg-[var(--ws-bar)] px-2.5 py-1.5 font-mono text-[10px] text-[var(--ws-text-muted)] opacity-60 cursor-not-allowed"
+                          onClick={() => {
+                            applyTemplate(template.id);
+                            setChatMessages([
+                              { id: `tpl-${template.id}`, role: "user", content: template.prompt },
+                            ]);
+                            void handleGenerate(template.prompt);
+                          }}
+                          className="rounded-lg border border-[var(--ws-input-border)] bg-[var(--ws-bar)] px-2.5 py-1.5 font-mono text-[10px] text-[var(--ws-text-muted)] transition-colors hover:border-[var(--ws-input-border-focus)] hover:bg-[var(--ws-input)] hover:text-[var(--ws-text)]"
                         >
                           {template.title}
                         </button>
@@ -1030,24 +1035,7 @@ const Workspace = () => {
                   handleFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY });
                 }}
               >
-                <div className={`ws-composer-box transition-colors relative overflow-hidden ${isDraggingOver ? "border-[var(--ws-input-border-focus)]" : ""}`}>
-                  {/* Lock Overlay */}
-                  <div className={`absolute inset-0 z-10 flex items-center justify-center transition-all duration-300 p-4 text-center ${
-                    chatDraft.trim()
-                      ? "bg-[var(--ws-input)]/92 backdrop-blur-[4px]"
-                      : "bg-[var(--ws-input)]/35 backdrop-blur-[1.5px]"
-                  }`}>
-                    <div className="flex flex-col sm:flex-row items-center gap-2">
-                      <span className="inline-flex items-center rounded-full bg-[var(--ws-send-bg)] px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--ws-send-text)]">
-                        <Settings className="h-3 w-3 animate-spin text-[var(--ws-send-text)] mr-1" style={{ animationDuration: '4s' }} />
-                        Version 2 in progress
-                      </span>
-                      <p className="font-heading text-xs text-[var(--ws-text-muted)]">
-                        Workspace is read-only during system upgrades.
-                      </p>
-                    </div>
-                  </div>
-
+                <div className={`ws-composer-box transition-colors ${isDraggingOver ? "border-[var(--ws-input-border-focus)]" : ""}`}>
                   {references.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 border-b border-[var(--ws-input-border)] px-3 pb-2 pt-2.5">
                       {references.map((reference, index) => (
@@ -1070,7 +1058,6 @@ const Workspace = () => {
                             onClick={() => removeReference(index)}
                             aria-label={`Remove ${reference.name}`}
                             className="text-muted-foreground hover:text-foreground"
-                            disabled
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1096,7 +1083,7 @@ const Workspace = () => {
                         void handleChatSubmit();
                       }
                     }}
-                    disabled
+                    disabled={isGenerating || isRefining}
                   />
 
                   <div className="flex items-center gap-1 px-2 pb-2">
@@ -1106,7 +1093,7 @@ const Workspace = () => {
                         setGenerationModel(model);
                         saveStoredModel(model);
                       }}
-                      disabled
+                      disabled={isGenerating || isRefining}
                     />
 
                     <FormatSelector
@@ -1124,7 +1111,7 @@ const Workspace = () => {
                       onDocumentFitChange={(v) => setDocumentFit(v)}
                       onArrowStyleChange={(v) => setArrowStyle(v)}
                       onAspectRatioChange={(v) => setAspectRatio(v)}
-                      disabled
+                      disabled={isGenerating || isRefining}
                     />
 
                     <div className="ml-auto flex items-center gap-1">
@@ -1132,7 +1119,7 @@ const Workspace = () => {
                         ref={attachButtonRef}
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled
+                        disabled={references.length >= MAX_REFERENCES}
                         title="Attach reference"
                         aria-label="Attach reference"
                         className="relative flex h-7 w-7 items-center justify-center rounded-md ws-icon-btn transition-colors disabled:opacity-40"
@@ -1149,7 +1136,7 @@ const Workspace = () => {
                         type="button"
                         size="icon"
                         className="ws-send h-7 w-7 shrink-0 rounded-full border-0 shadow-none"
-                        disabled
+                        disabled={!chatDraft.trim() || isGenerating || isRefining}
                         onClick={() => void handleChatSubmit()}
                         aria-label={output ? "Send refine" : "Generate"}
                       >

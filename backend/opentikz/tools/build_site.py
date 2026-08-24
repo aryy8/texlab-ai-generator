@@ -1,0 +1,1340 @@
+#!/usr/bin/env python3
+"""Build the static OpenTikZ website from catalog.json + item files.
+
+Reads catalog.json (root) and, for each item, its sibling .tex (code) and .svg
+(preview). Emits a self-contained static site under site/:
+
+  site/
+    index.html              gallery (build-time cards) + Fuse.js search/filter
+    item/<id>.html          per-item page: preview, copyable .tex, metadata
+    previews/<id>.svg       copied preview
+    assets/style.css        the stylesheet
+    assets/app.js           search/filter + copy-to-clipboard
+    .nojekyll               disable Jekyll on GitHub Pages
+
+Stdlib only. The site needs no TeX to build — only catalog.json and the committed
+.svg previews. Serve locally with:  python3 -m http.server -d site
+"""
+from __future__ import annotations
+
+import html
+import json
+import re
+import shutil
+from pathlib import Path
+
+from _common import repo_root
+
+TAGLINE = "A TikZ resource library for academic conceptual diagrams."
+LEDE = ("Copyable icons, editable architecture templates, and one AI-editable skill "
+        "— so researchers produce paper figures fast without writing TikZ from scratch.")
+
+TYPE_ORDER = {"icon": 0, "template": 1, "example": 2, "skill": 3}
+TYPE_LABEL = {"icon": "icon", "template": "template", "example": "example", "skill": "skill"}
+
+
+def find_tex(item_dir: Path) -> Path | None:
+    texs = sorted(item_dir.glob("*.tex"))
+    return texs[0] if texs else None
+
+
+def json_for_script(obj) -> str:
+    """Serialize JSON safe to embed inside an inline <script> element.
+
+    Neutralizes ``<``, ``>``, ``&`` (so contributor-supplied name/description/tags
+    containing ``</script>`` or ``<!--`` cannot break out of the element — a
+    stored-XSS vector) and the U+2028/U+2029 line separators that are valid in
+    JSON but not in JS string literals. The result is still valid JSON for
+    ``JSON.parse``.
+    """
+    return (
+        json.dumps(obj, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  HTML fragments
+# --------------------------------------------------------------------------- #
+REPO_URL = "https://github.com/opentikz/opentikz"
+
+# Inline SVG glyphs for the download/copy button bar (currentColor → inherit button color).
+DL_ICON = ('<svg class="dl-ic" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">'
+           '<path d="M8 1.5v8m0 0L4.8 6.3M8 9.5l3.2-3.2M2.5 13.5h11" fill="none" '
+           'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
+           'stroke-linejoin="round"/></svg>')
+COPY_ICON = ('<svg class="dl-ic" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">'
+             '<rect x="5" y="5" width="9" height="9" rx="1.6" fill="none" stroke="currentColor" '
+             'stroke-width="1.6"/><path d="M11 5V3.2A1.2 1.2 0 0 0 9.8 2H3.2A1.2 1.2 0 0 0 2 3.2'
+             'v6.6A1.2 1.2 0 0 0 3.2 11H5" fill="none" stroke="currentColor" stroke-width="1.6" '
+             'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def head(title: str, css_href: str, *, description: str = TAGLINE, browse_href: str = "") -> str:
+    """``browse_href`` lets the '/' shortcut jump to Browse from surfaces that
+    have no search input (Home, item pages); empty on Browse (focuses inline)."""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html.escape(title)}</title>
+<meta name="description" content="{html.escape(description)}">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{css_href}">
+</head>
+<body data-browse="{browse_href}">
+<div class="grid-bg" aria-hidden="true"></div>
+"""
+
+
+def navbar(surface: str) -> str:
+    """Shared sticky header — identical on every surface except active state and
+    relative hrefs. surface in {home, browse, item, skills}."""
+    # Root-relative hrefs so the canonical URL stays clean ("/" not "/index.html",
+    # "/browse/" not "/browse/index.html") on every surface.
+    if surface == "home":
+        home, browse, sec = "/", "/browse/", "/browse/"
+    elif surface == "browse":
+        home, browse, sec = "/", "/browse/", ""
+    else:  # item
+        home, browse, sec = "/", "/browse/", "/browse/"
+    browse_active = " active" if surface in ("browse", "item") else ""
+    return f"""<header class="navbar">
+  <div class="nav-inner">
+    <a class="wordmark" href="{home}">Open<span class="tik">TikZ</span><span class="caret">┃</span></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+    <label class="nav-burger" for="nav-toggle" aria-label="Toggle navigation menu">
+      <span></span><span></span><span></span>
+    </label>
+    <nav class="nav-links">
+      <a class="nav-browse{browse_active}" href="{browse}" data-nav="browse">Browse</a>
+      <a href="{sec}#icons" data-nav="icons">Icons</a>
+      <a href="{sec}#templates" data-nav="templates">Templates</a>
+      <a href="{sec}#examples" data-nav="examples">Examples</a>
+      <a href="{REPO_URL}#readme">Docs</a>
+      <a class="nav-gh" href="{REPO_URL}" target="_blank" rel="noopener">GitHub <span class="star">★</span></a>
+    </nav>
+  </div>
+</header>
+"""
+
+
+def badge(t: str) -> str:
+    return f'<span class="badge badge-{html.escape(t)}">{html.escape(TYPE_LABEL.get(t, t))}</span>'
+
+
+def tag_list(tags: list[str], limit: int | None = None) -> str:
+    if limit:
+        tags = tags[:limit]
+    return "".join(f'<span class="tag">{html.escape(x)}</span>' for x in tags)
+
+
+def card(item: dict, preview_href: str, item_href: str, idx: int) -> str:
+    name = html.escape(item["name"])
+    domains = " · ".join(html.escape(d) for d in item.get("domain", []))
+    return f"""  <a class="card" href="{item_href}" data-id="{html.escape(item['id'])}" data-type="{html.escape(item['type'])}" style="--i:{idx}">
+    <div class="canvas"><img src="{preview_href}" alt="{name} preview" loading="lazy"></div>
+    <div class="card-meta">
+      {badge(item['type'])}
+      <h3>{name}</h3>
+      <p class="domains">{domains}</p>
+    </div>
+  </a>
+"""
+
+
+def metadata_table(item: dict) -> str:
+    rows = []
+
+    def row(k: str, v: str) -> str:
+        return f"<tr><th>{html.escape(k)}</th><td>{v}</td></tr>"
+
+    rows.append(row("id", f"<code>{html.escape(item['id'])}</code>"))
+    rows.append(row("type", badge(item["type"])))
+    rows.append(row("domain", ", ".join(html.escape(d) for d in item.get("domain", []))))
+    if item.get("venue"):
+        rows.append(row("venue", ", ".join(html.escape(v) for v in item["venue"])))
+    if item.get("requires"):
+        reqs = ", ".join(f"<code>{html.escape(r)}</code>" for r in item["requires"])
+        rows.append(row("requires", reqs))
+    rows.append(row("license", f"<code>{html.escape(item['license'])}</code>"))
+    rows.append(row("author", html.escape(item.get("author", ""))))
+    return "<table class=\"meta-table\">" + "".join(rows) + "</table>"
+
+
+def edit_contract_html(contract: dict, skills_href: str) -> str:
+    """Render a template's edit_contract as a compact, read-only 'how to edit'
+    block (parameters + operations), with a pointer to the one repo-wide skill."""
+    params = ""
+    for p in contract.get("parameters", []):
+        meaning = html.escape(p.get("meaning", ""))
+        if p.get("default"):
+            meaning += f' <span class="param-def">default <code>{html.escape(p["default"])}</code></span>'
+        params += (
+            f"<tr><td><code>{html.escape(p.get('name', ''))}</code></td>"
+            f"<td>{meaning}</td></tr>"
+        )
+    ops = "".join(
+        f"<li><code>{html.escape(o.get('id', ''))}</code> — {html.escape(o.get('summary', ''))}</li>"
+        for o in contract.get("operations", [])
+    )
+    naming = html.escape(contract.get("node_naming", ""))
+    return f"""
+  <section class="skill">
+    <div class="skill-head">
+      <h2>Edit contract <span>— how the AI edits this template</span></h2>
+      <a class="skill-link-inline" href="{skills_href}">using-opentikz skill →</a>
+    </div>
+    <details class="skill-body" open>
+      <summary>Parameters &amp; safe edit operations</summary>
+      <div class="md">
+        <h3>Parameters</h3>
+        <table class="contract-params">{params}</table>
+        <h3>Node naming</h3>
+        <p><code>{naming}</code></p>
+        <h3>Operations</h3>
+        <ul>{ops}</ul>
+      </div>
+    </details>
+  </section>
+"""
+
+
+def item_page(item: dict, code: str, tex_name: str, css_href: str) -> str:
+    name = html.escape(item["name"])
+    desc = html.escape(item.get("description", ""))
+    preview = f"../previews/{item['id']}.svg"
+    is_template = item["type"] == "template"
+    contract = item.get("edit_contract")
+    skill_note = ""
+    skill_section = ""
+    if is_template and contract:
+        skill_note = (
+            '<p class="skill-note">This template ships an <strong>edit contract</strong> '
+            '(in its <code>meta.json</code>) that the repo-wide '
+            f'<a href="{REPO_URL}/blob/main/skills/using-opentikz/SKILL.md" target="_blank" rel="noopener">using-opentikz</a> skill reads to edit it reliably — '
+            'the parameters and safe operations are listed below.</p>'
+        )
+        skill_section = edit_contract_html(contract, f"{REPO_URL}/blob/main/skills/using-opentikz/SKILL.md")
+    return (
+        head(f"{item['name']} — OpenTikZ", css_href,
+             description=item.get("description", TAGLINE), browse_href="../browse/")
+        + navbar("item")
+        + f"""<main class="item">
+  <a class="back" href="../browse/">← browse the library</a>
+  <div class="item-top">
+    <div class="item-canvas"><img src="{preview}" alt="{name} preview"></div>
+    <div class="item-head">
+      {badge(item['type'])}
+      <h1>{name}</h1>
+      <p class="lede">{desc}</p>
+      {skill_note}
+      {metadata_table(item)}
+      <p class="tags">{tag_list(item.get('tags', []))}</p>
+      <div class="downloads">
+        <button class="dl-btn dl-primary dl-copy" data-target="src">{COPY_ICON}Copy .tex</button>
+        <button class="dl-btn" data-tex="src" data-name="{html.escape(tex_name)}">{DL_ICON}.tex</button>
+        <a class="dl-btn" href="{preview}" download="{item['id']}.svg">{DL_ICON}SVG</a>
+        <button class="dl-btn" data-png="{preview}" data-name="{item['id']}.png">{DL_ICON}PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <details class="code-block">
+    <summary class="code-head">
+      <span class="filename">{html.escape(tex_name)}</span>
+      <span class="code-toggle" aria-hidden="true"></span>
+    </summary>
+    <div class="code-body">
+      <button class="copy code-copy" data-target="src">Copy .tex</button>
+      <pre><code id="src">{html.escape(code)}</code></pre>
+    </div>
+  </details>
+{skill_section}
+  <section class="usage">
+    <h2>Use it</h2>
+    <p>The file compiles on its own (<code>\\documentclass{{standalone}}</code>).
+       Drop it into your project and <code>\\input</code> it, or copy the
+       <code>tikzpicture</code> into your figure. Colours come from the shared
+       palette defined in the preamble — edit those named colours, not raw hex.</p>
+    {license_note(item)}
+  </section>
+</main>
+"""
+        + footer()
+        + f'<script src="{css_href.replace("style.css", "app.js")}"></script>\n</body>\n</html>\n'
+    )
+
+
+def is_brand(item: dict) -> bool:
+    """Items carrying a brand mark get a trademark disclaimer instead of the
+    blanket CC0 line. This covers brand icons AND templates that inline brand
+    marks — both live in the 'brands' domain, so key off that, not the type."""
+    return "brands" in item.get("domain", [])
+
+
+def license_note(item: dict) -> str:
+    """Per-item license line; brand marks must not carry the blanket CC0 claim."""
+    if is_brand(item):
+        return (
+            f'<p class="license-note">The TikZ <strong>code</strong> is CC0 1.0; the '
+            f'brand mark remains a <strong>trademark of its owner</strong> — use it to '
+            f'identify the brand in figures, not to imply endorsement. '
+            f'<a href="{REPO_URL}/blob/main/icons/brands/README.md">Details</a> · '
+            f'Rights holder? <a href="{REPO_URL}/issues/new?template=trademark-removal.yml">'
+            f'request removal</a>.</p>'
+        )
+    return ('<p class="license-note">Graphic content is <strong>CC0 1.0</strong> '
+            '(public domain) — reuse freely, no attribution required.</p>')
+
+
+def footer() -> str:
+    return """<footer class="site-footer">
+  <div>
+    <span class="fw">OpenTikZ</span> — conceptual TikZ for papers.
+  </div>
+  <div class="licenses">
+    Code <code>MIT</code> · Content <code>CC0 1.0</code> · Brand marks are property of their respective owners
+  </div>
+</footer>
+"""
+
+
+SECTION_TITLES = {"icon": "Icons", "template": "Templates", "example": "Examples"}
+
+
+def _howto_term_box(text: str) -> str:
+    """Mini-terminal showing the skill command above a prompt — shared by the
+    'describe' input cell and the 'edit/png' middle prompt cell, so every prompt
+    in the carousel reads as the `/opentikz:using-opentikz` command you'd type."""
+    return ('<div class="howto-term-box">'
+            '<div class="howto-term-bar"><span></span><span></span><span></span></div>'
+            '<code class="howto-term-cmd">/opentikz:using-opentikz</code>'
+            f'<code class="howto-term-text">&ldquo;{html.escape(text)}&rdquo;</code>'
+            '</div>')
+
+
+def howto_carousel(scenarios: list[dict], prefix: str = "") -> str:
+    """Landing 'How to use' carousel; one slide per usage scenario. Empty -> ''.
+    Reuses the .demo-slide/.demo-dot classes so app.js drives it unchanged.
+    Two layouts: 'steps' (a 1-2-3 workflow) and 'inout' (input -> output).
+    ``prefix`` adjusts the howto/ asset path for surface depth ('' on Home)."""
+    if not scenarios:
+        return ""
+    slides, dots = "", ""
+    for i, s in enumerate(scenarios):
+        label = html.escape(s.get("tab_label", ""))
+        active = " active" if i == 0 else ""
+        caption = (f'<p class="howto-cap">{html.escape(s["caption"])}</p>'
+                   if s.get("caption") else "")
+        if s.get("layout") == "steps":
+            cells = ""
+            for n, st in enumerate(s.get("steps", []), start=1):
+                if st.get("img"):
+                    vis = (f'<img src="{prefix}howto/{html.escape(st["img"])}" '
+                           f'alt="" loading="lazy">')
+                else:
+                    parts = [p.strip() for p in st.get("code", "").split("·")]
+                    chips = "".join(f'<code>{html.escape(p)}</code>' for p in parts)
+                    vis = f'<div class="howto-codes">{chips}</div>'
+                cells += (f'<div class="howto-step"><span class="howto-step-n">{n}</span>'
+                          f'<div class="howto-step-vis">{vis}</div>'
+                          f'<p class="howto-step-cap">{html.escape(st.get("text", ""))}</p></div>')
+            body = f'<div class="howto-steps">{cells}</div>'
+        else:  # inout
+            # default connector; overridden to a prompt terminal for img-input scenarios
+            mid = '<div class="howto-arrow"><span class="howto-arrow-glyph">&rarr;</span></div>'
+            if s.get("placeholder"):
+                in_cell = '<div class="howto-cell howto-ph">sample coming</div>'
+                out_cell = '<div class="howto-cell howto-ph">preview coming</div>'
+            elif s.get("input_img"):
+                in_cell = (f'<figure class="howto-cell"><img src="{prefix}howto/'
+                           f'{html.escape(s["input_img"])}" alt="input" loading="lazy">'
+                           f'<figcaption>input</figcaption></figure>')
+                out_cell = (f'<figure class="howto-cell"><img src="{prefix}howto/'
+                            f'{html.escape(s["output_img"])}" alt="output" loading="lazy">'
+                            f'<figcaption>editable TikZ</figcaption></figure>')
+                # the instruction shown as the skill command you'd actually type
+                mid = (f'<div class="howto-arrow howto-term">'
+                       f'{_howto_term_box(s.get("prompt", ""))}'
+                       f'<figcaption>prompt</figcaption></div>')
+            else:
+                in_cell = (f'<figure class="howto-cell howto-term">'
+                           f'{_howto_term_box(s.get("input_text", ""))}'
+                           f'<figcaption>prompt</figcaption></figure>')
+                out_cell = (f'<figure class="howto-cell"><img src="{prefix}howto/'
+                            f'{html.escape(s["output_img"])}" alt="output" loading="lazy">'
+                            f'<figcaption>editable TikZ</figcaption></figure>')
+            body = f'<div class="howto-flow">{in_cell}{mid}{out_cell}</div>'
+        slides += f"""      <div class="demo-slide{active}" data-slide="{i}">
+        {caption}
+        {body}
+      </div>
+"""
+        dots += (f'<button class="demo-dot{active}" data-dot="{i}" aria-label="{label}">'
+                 f'<span>{label}</span></button>')
+    return f"""
+  <section class="howto">
+    <h2>4 ways to use OpenTikZ</h2>
+    <div class="car-dots howto-tabs">{dots}</div>
+    <div class="carousel howto-carousel" id="howto-carousel" tabindex="0" data-autoplay data-interval="5000" aria-roledescription="carousel" aria-label="How to use OpenTikZ">
+      <div class="car-track">
+{slides}      </div>
+    </div>
+  </section>
+"""
+
+
+def hero_carousel(items: list[dict]) -> str:
+    """Auto-rotating showcase of large figures in the hero (one figure per slide).
+    Reuses the generic .carousel machinery; slides/dots use .hero-slide/.hero-dot."""
+    slides, dots = "", ""
+    for i, it in enumerate(items):
+        name = html.escape(it["name"])
+        active = " active" if i == 0 else ""
+        slides += f"""        <div class="hero-slide{active}" data-slide="{i}">
+          <figure class="hero-fig">
+            <img src="previews/{html.escape(it['id'])}.svg" alt="{name}" loading="lazy">
+            <figcaption class="hero-cap">{badge(it['type'])}<a href="item/{html.escape(it['id'])}.html">{name}</a></figcaption>
+          </figure>
+        </div>
+"""
+        dots += f'<button class="hero-dot{active}" data-dot="{i}" aria-label="Show {name}"></button>'
+    return f"""    <div class="carousel hero-carousel" id="hero-carousel" tabindex="0" data-autoplay data-interval="5000" aria-roledescription="carousel" aria-label="Featured figures">
+      <button class="car-nav car-prev" aria-label="Previous">&lsaquo;</button>
+      <div class="car-track">
+{slides}      </div>
+      <button class="car-nav car-next" aria-label="Next">&rsaquo;</button>
+    </div>
+    <div class="car-dots">{dots}</div>
+"""
+
+
+def why_tikz_band() -> str:
+    """Foundational reassurance, slimmed to a 3-point inline strip."""
+    return r"""
+  <section class="why-tikz-slim">
+    <h2>Why TikZ</h2>
+    <div class="wts-strip">
+      <div class="wts-item"><span class="wts-num">01</span><b>Vector quality</b><span class="wts-desc">Crisp at any zoom, sharp in print &mdash; no pixelated screenshots.</span></div>
+      <div class="wts-item"><span class="wts-num">02</span><b>Native to your paper</b><span class="wts-desc">Same fonts, math, and <code>\ref</code>/<code>\cite</code> as the document.</span></div>
+      <div class="wts-item"><span class="wts-num">03</span><b>Text, so it's diffable</b><span class="wts-desc">It's source &mdash; version it in git, tweak one number, recompile.</span></div>
+    </div>
+  </section>
+"""
+
+
+def why_opentikz_band() -> str:
+    """Beat 3: why an edit anchored to a real template beats raw LLM TikZ."""
+    return """
+  <section class="why-ot">
+    <h2>Why not just ask ChatGPT for TikZ?</h2>
+    <div class="cmp-rows">
+      <div class="cmp-row cmp-head"><span class="cmp-h-x">Raw ChatGPT TikZ</span><span class="cmp-h-v">OpenTikZ + skill</span></div>
+      <div class="cmp-row"><span class="cmp-x">Often won't compile</span><span class="cmp-v">Compiles standalone, first try</span></div>
+      <div class="cmp-row"><span class="cmp-x">Re-describe it to re-edit</span><span class="cmp-v">Real template + <code>edit_contract</code> for precise edits</span></div>
+      <div class="cmp-row"><span class="cmp-x">Random, off-palette colors</span><span class="cmp-v">One shared, consistent palette</span></div>
+    </div>
+  </section>
+"""
+
+
+def getstarted_band() -> str:
+    """On-page install path: the two real Claude Code plugin commands (verbatim
+    from the How-to-use page's recommended card), with a link out to the README
+    for the other install methods."""
+    return f"""
+  <section class="getstarted" id="get-started">
+    <h2>Get started in two lines</h2>
+    <p class="gs-lede">Add OpenTikZ to Claude Code, then just describe the figure you want.</p>
+    <div class="gs-cmds">
+      <pre><code>/plugin marketplace add {REPO_URL}</code></pre>
+      <pre><code>/plugin install opentikz@opentikz</code></pre>
+    </div>
+    <p class="gs-note">Send them as two separate Claude Code messages, then use it with
+      <code>/opentikz:using-opentikz</code>. <a href="{REPO_URL}#readme">More ways to install &rarr;</a></p>
+  </section>
+"""
+
+
+def home_page(featured: list[dict], by_id: dict, counts: dict, howto: list[dict], css_href: str) -> str:
+    """Marketing Home — no content grid, no search box (per spec)."""
+    howto_section = howto_carousel(howto)
+    why_tikz = why_tikz_band()
+    why_opentikz = why_opentikz_band()
+    getstarted = getstarted_band()
+
+    templates = sorted((it for it in by_id.values() if it.get("type") == "template"),
+                       key=lambda it: it["name"].lower())
+    showcase_items = list(featured) + templates
+
+    return (
+        head("OpenTikZ — paper-ready TikZ figures from a copyable library", css_href,
+             description=("Paper-ready conceptual TikZ figures — simple and fast: copyable icons, "
+                          "editable templates, and one AI-editable skill."),
+             browse_href="browse/")
+        + navbar("home")
+        + f"""<main class="home">
+  <section class="showcase">
+    <a class="hero-logo" href="/" aria-label="OpenTikZ home">Open<span class="tik">TikZ</span><span class="caret">&#9475;</span></a>
+    <h1>Describe your figure. Get it, paper-ready.</h1>
+    <p class="show-lede">An AI-agent skill for LaTeX TikZ figures.</p>
+{hero_carousel(showcase_items)}    <div class="cta-row">
+      <a class="btn btn-primary" href="browse/">Browse the library &rarr;</a>
+    </div>
+  </section>
+{getstarted}
+{howto_section}
+{why_tikz}
+{why_opentikz}
+  <section class="cta-band">
+    <h2>Build your next figure faster.</h2>
+    <a class="btn btn-primary" href="browse/">Browse the library →</a>
+  </section>
+</main>
+"""
+        + footer()
+        + f'<script src="{css_href.replace("style.css", "app.js")}"></script>\n'
+        + "</body>\n</html>\n"
+    )
+
+
+def browse_page(items: list[dict], css_href: str) -> str:
+    """Tool surface under /browse/ — sectioned grid + Fuse search."""
+    counts = {"icon": 0, "template": 0, "example": 0}
+    for it in items:
+        counts[it["type"]] = counts.get(it["type"], 0) + 1
+
+    groups_html = ""
+    idx = 0
+    for t in ("icon", "template", "example"):
+        members = [it for it in items if it["type"] == t]
+        if not members:
+            continue
+        cards = ""
+        for it in members:
+            cards += card(it, f"../previews/{it['id']}.svg", f"../item/{it['id']}.html", idx)
+            idx += 1
+        groups_html += f"""  <section class="group" id="{t}s" data-group="{t}">
+    <div class="group-head">
+      <h2>{SECTION_TITLES[t]}</h2>
+      <span class="group-count" data-count>{len(members)}</span>
+    </div>
+    <div class="grid">
+{cards}    </div>
+  </section>
+"""
+
+    chips = ['<button class="chip active" data-type="all">all</button>']
+    for t in ("icon", "template", "example"):
+        if counts.get(t):
+            chips.append(f'<button class="chip" data-type="{t}">{SECTION_TITLES[t].lower()} · {counts[t]}</button>')
+    chips_html = "\n      ".join(chips)
+
+    # Embedded in an inline <script> below — must be HTML-script-safe so a
+    # contributor's name/description/tags can't break out of the element.
+    search_index = json_for_script(
+        [
+            {"id": it["id"], "name": it["name"], "type": it["type"],
+             "domain": it.get("domain", []), "tags": it.get("tags", []),
+             "description": it.get("description", "")}
+            for it in items
+        ]
+    )
+
+    return (
+        head("Browse — OpenTikZ", css_href, browse_href="")
+        + navbar("browse")
+        + f"""<section class="hero hero-browse">
+  <h1 class="browse-title">Browse the library</h1>
+  <div class="hero-search">
+    <input id="search" type="search" placeholder="Search icons, templates, tags…    ( / )" autocomplete="off" aria-label="Search resources">
+  </div>
+  <div class="chips" id="chips">
+      {chips_html}
+  </div>
+  <p class="result-count" id="count"></p>
+</section>
+
+<main id="gallery">
+{groups_html}</main>
+<p class="empty" id="empty" hidden>No resources match — try a different term.</p>
+"""
+        + footer()
+        + f'<script id="catalog" type="application/json">{search_index}</script>\n'
+        + ('<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js" '
+           'integrity="sha384-PCSoOZTpbkikBEtd/+uV3WNdc676i9KUf01KOA8CnJotvlx8rRrETbDuwdjqTYvt" '
+           'crossorigin="anonymous" referrerpolicy="no-referrer"></script>\n')
+        + f'<script src="{css_href.replace("style.css", "app.js")}"></script>\n'
+        + "</body>\n</html>\n"
+    )
+
+
+def build(root: Path) -> int:
+    catalog = json.loads((root / "catalog.json").read_text(encoding="utf-8"))
+    catalog = [it for it in catalog if it.get("type") in ("icon", "template", "example")]
+    catalog.sort(key=lambda it: (TYPE_ORDER.get(it["type"], 9), it["name"].lower()))
+
+    site = root / "site"
+    if site.exists():
+        shutil.rmtree(site)
+    (site / "item").mkdir(parents=True)
+    (site / "browse").mkdir(parents=True)
+    (site / "previews").mkdir(parents=True)
+    (site / "assets").mkdir(parents=True)
+
+    (site / "assets" / "style.css").write_text(STYLE_CSS, encoding="utf-8")
+    (site / "assets" / "app.js").write_text(APP_JS, encoding="utf-8")
+    (site / ".nojekyll").write_text("", encoding="utf-8")
+    # Custom domain for GitHub Pages. site/ is rebuilt from scratch each run, so
+    # the CNAME must be (re)written here rather than committed under site/.
+    (site / "CNAME").write_text("opentikz.org\n", encoding="utf-8")
+    # Crawler directives: allow everything and point at the sitemap. Without a
+    # robots.txt the host serves GitHub's 404 page, which crawlers tolerate but
+    # which also hides the sitemap pointer that speeds up (re)indexing.
+    (site / "robots.txt").write_text(
+        "User-agent: *\nAllow: /\n\nSitemap: https://opentikz.org/sitemap.xml\n",
+        encoding="utf-8")
+    # Favicons live at the site root (head() links them with absolute paths so
+    # they resolve from every surface). Copied verbatim from assets/ — no TeX/raster
+    # tooling needed at build time.
+    for fav in ("favicon.ico", "favicon.svg", "apple-touch-icon.png"):
+        src = root / "assets" / fav
+        if src.exists():
+            shutil.copyfile(src, site / fav)
+
+    n_prev = 0
+    for it in catalog:
+        item_dir = root / it["path"]
+        # copy preview
+        svg = item_dir / it["preview"]
+        if svg.exists():
+            shutil.copyfile(svg, site / "previews" / f"{it['id']}.svg")
+            n_prev += 1
+        # per-item page
+        tex = find_tex(item_dir)
+        code = tex.read_text(encoding="utf-8") if tex else "% (source not found)"
+        tex_name = tex.name if tex else ""
+        (site / "item" / f"{it['id']}.html").write_text(
+            item_page(it, code, tex_name, "../assets/style.css"), encoding="utf-8"
+        )
+
+    # Browse surface (the tool) under /browse/.
+    (site / "browse" / "index.html").write_text(
+        browse_page(catalog, "../assets/style.css"), encoding="utf-8")
+
+    # Landing 'How to use' scenarios (content-driven). Copy referenced assets
+    # into site/howto/; the section auto-hides if the manifest is absent/empty.
+    howto: list[dict] = []
+    howto_json = root / "skills-demos" / "landing-howto.json"
+    if howto_json.exists():
+        howto = json.loads(howto_json.read_text(encoding="utf-8"))
+        (site / "howto").mkdir(exist_ok=True)
+        for s in howto:
+            names = [st.get("img") for st in s.get("steps", [])]
+            names += [s.get("input_img"), s.get("output_img")]
+            for name in filter(None, names):
+                src = root / "skills-demos" / name
+                if src.exists():
+                    shutil.copyfile(src, site / "howto" / name)
+
+    # Home surface (marketing). The hero showcase is examples-only: a flagship
+    # paper-grade figure, never a bare icon/template. Prefer the example items
+    # flagged featured (flagship first); fall back to all examples so the page
+    # still builds before any flagship is flagged.
+    by_id = {it["id"]: it for it in catalog}
+    counts = {"icon": 0, "template": 0, "example": 0}
+    for it in catalog:
+        counts[it["type"]] = counts.get(it["type"], 0) + 1
+    featured = [it for it in catalog if it.get("featured") and it["type"] == "example"]
+    featured.sort(key=lambda it: (0 if "lora" in it["id"] else 1, it["name"].lower()))
+    if not featured:
+        featured = [it for it in catalog if it["type"] == "example"]
+    (site / "index.html").write_text(
+        home_page(featured, by_id, counts, howto, "assets/style.css"), encoding="utf-8")
+
+    # sitemap.xml — every crawlable URL the site emits (home, browse, per-item).
+    # No <lastmod> on purpose: site/ is rebuilt every deploy, so a build-time
+    # date would churn on every push and mislead crawlers about real changes.
+    base = "https://opentikz.org"
+    urls = [f"{base}/", f"{base}/browse/"]
+    urls += [f"{base}/item/{it['id']}.html" for it in catalog]
+    body = "\n".join(f"  <url><loc>{u}</loc></url>" for u in urls)
+    (site / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{body}\n</urlset>\n",
+        encoding="utf-8")
+
+    print(f"built site/ — {len(catalog)} items, {n_prev} previews, "
+          f"{len(catalog)+2} pages (home + browse + items); "
+          f"featured={len(featured)}")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+#  Assets (kept here so the script is the single source of truth)
+# --------------------------------------------------------------------------- #
+STYLE_CSS = r""":root{
+  --paper:#FBFAF6; --ink:#1B1A16; --muted:#6F6C61; --line:#E6E3D8; --line-strong:#D6D2C4;
+  --otblue:#0072B2; --otorange:#E69F00; --otteal:#009E73; --otpurple:#A85C86; --otgray:#5A5A5A;
+  --grid:rgba(0,114,178,.05);
+  --shadow:0 1px 0 var(--line-strong), 0 18px 40px -28px rgba(27,26,22,.45);
+  --maxw:1180px; --gutter:28px;   /* single source of truth for the layout container */
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased; position:relative; min-height:100vh;
+}
+/* TikZ-style coordinate grid background */
+.grid-bg{
+  position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:26px 26px;
+  mask-image:radial-gradient(ellipse 120% 90% at 50% 0,#000 40%,transparent 100%);
+}
+a{color:inherit}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.86em;
+  background:#F1EFE6; padding:.08em .35em; border-radius:3px; border:1px solid var(--line)}
+
+/* ---------- sticky nav bar ---------- */
+.navbar{position:sticky; top:0; z-index:50; background:rgba(251,250,246,.86);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--line)}
+.nav-inner{max-width:var(--maxw); margin:0 auto; padding:11px var(--gutter);
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+.wordmark{display:inline-block; text-decoration:none; font-family:"Fraunces",serif;
+  font-weight:900; font-size:26px; letter-spacing:-.02em; line-height:1}
+.wordmark .tik{color:var(--otblue)}
+.wordmark .caret{color:var(--otorange); animation:blink 1.2s steps(1) infinite; margin-left:.04em}
+@keyframes blink{50%{opacity:0}}
+.nav-links{display:flex; align-items:center; gap:4px; margin-left:auto; flex-wrap:wrap}
+.nav-links a{font-family:"IBM Plex Sans",sans-serif; font-size:.92rem; color:var(--muted);
+  text-decoration:none; padding:7px 11px; border-radius:7px; white-space:nowrap;
+  transition:color .15s, background .15s}
+.nav-links a:hover{color:var(--ink); background:#F1EFE6}
+.nav-links a.active{color:var(--otblue)}
+.nav-gh{color:var(--ink); font-weight:500}
+.nav-gh .star{color:var(--otorange)}
+/* hamburger toggle — hidden on desktop, shown at the mobile breakpoint */
+.nav-toggle{display:none}
+.nav-burger{display:none; width:42px; height:38px; flex:none; cursor:pointer; padding:0;
+  border:1px solid var(--line); border-radius:9px; background:transparent;
+  align-items:center; justify-content:center; flex-direction:column; gap:4px}
+.nav-burger span{display:block; width:18px; height:2px; border-radius:2px; background:var(--ink);
+  transition:transform .2s ease, opacity .2s ease}
+
+/* ---------- hero (elevated, centred search) ---------- */
+.hero{max-width:760px; margin:0 auto; padding:54px 28px 12px; text-align:center}
+.hero .eyebrow{margin:0 0 .4em; font-family:"IBM Plex Mono",monospace; font-size:.8rem;
+  letter-spacing:.03em; color:var(--muted)}
+.hero .lede{font-size:clamp(1.15rem,2.6vw,1.6rem); margin:0 auto .95em; max-width:30ch;
+  font-family:"Fraunces",serif; font-weight:400; color:#34322b}
+.hero-search{position:relative; max-width:640px; margin:0 auto}
+#search{width:100%; padding:16px 18px 16px 48px; font:inherit; font-size:1.05rem; color:var(--ink);
+  background:#fff; border:1.5px solid var(--line-strong); border-radius:13px; box-shadow:var(--shadow);
+  transition:border-color .15s, box-shadow .15s}
+#search::placeholder{color:#A6A294}
+#search:focus{outline:none; border-color:var(--otblue); box-shadow:0 0 0 4px rgba(0,114,178,.14)}
+.hero-search::before{content:"\2315"; position:absolute; left:17px; top:50%;
+  transform:translateY(-50%) rotate(-12deg); color:#A6A294; font-size:1.3rem; pointer-events:none}
+.chips{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 0; justify-content:center}
+.chip{font:500 .85rem/1 "IBM Plex Mono",monospace; padding:7px 13px; cursor:pointer;
+  background:#fff; color:var(--muted); border:1.5px solid var(--line-strong);
+  border-radius:999px; transition:.15s}
+.chip:hover{border-color:var(--otblue); color:var(--ink)}
+.chip.active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+.result-count{color:var(--muted); font-size:.82rem; margin:12px 0 0; text-align:center;
+  font-family:"IBM Plex Mono",monospace}
+
+/* ---------- gallery ---------- */
+.grid{
+  max-width:var(--maxw); margin:6px auto 0; padding:14px var(--gutter) 60px;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:20px;
+}
+.card{
+  display:flex; flex-direction:column; text-decoration:none; background:#fff;
+  border:1px solid var(--line); border-radius:12px; overflow:hidden;
+  box-shadow:var(--shadow); transition:transform .18s cubic-bezier(.2,.7,.2,1), box-shadow .18s, border-color .18s;
+  animation:rise .5s both; animation-delay:calc(var(--i,0) * 32ms);
+}
+@keyframes rise{from{opacity:0; transform:translateY(12px)}to{opacity:1; transform:none}}
+.card:hover{transform:translateY(-4px); border-color:var(--line-strong);
+  box-shadow:0 1px 0 var(--line-strong),0 26px 50px -26px rgba(27,26,22,.55)}
+.canvas{
+  aspect-ratio:4/3; display:grid; place-items:center; padding:20px;
+  background:
+    linear-gradient(rgba(0,0,0,.028) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,0,0,.028) 1px,transparent 1px) #fcfcfa;
+  background-size:18px 18px; border-bottom:1px solid var(--line);
+}
+.canvas img{max-width:100%; max-height:150px; width:auto; height:auto}
+.card-meta{padding:13px 15px 16px}
+.card-meta h3{margin:.35em 0 .15em; font-family:"Fraunces",serif; font-weight:600;
+  font-size:1.12rem; letter-spacing:-.01em}
+.domains{margin:0; color:var(--muted); font-size:.8rem;
+  font-family:"IBM Plex Mono",monospace}
+.empty{max-width:1180px; margin:0 auto; padding:0 28px 80px; color:var(--muted)}
+
+/* ---------- badges ---------- */
+.badge{display:inline-block; font:500 .68rem/1 "IBM Plex Mono",monospace;
+  text-transform:uppercase; letter-spacing:.06em; padding:5px 8px; border-radius:5px;
+  border:1px solid currentColor}
+.badge-icon{color:var(--otteal)}
+.badge-template{color:var(--otblue)}
+.badge-example{color:var(--otpurple)}
+.badge-skill{color:var(--otorange)}
+
+/* ---------- item page ---------- */
+.item{max-width:var(--maxw); margin:0 auto; padding:8px var(--gutter) 70px}
+.back{display:inline-block; margin:6px 0 22px; color:var(--muted);
+  font-family:"IBM Plex Mono",monospace; font-size:.85rem; text-decoration:none}
+.back:hover{color:var(--otblue)}
+.item-top{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); gap:34px; align-items:start}
+.item-canvas{
+  background:
+    linear-gradient(rgba(0,0,0,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,0,0,.03) 1px,transparent 1px) #fff;
+  background-size:22px 22px; border:1px solid var(--line); border-radius:12px;
+  padding:30px; display:grid; place-items:center; box-shadow:var(--shadow); min-height:240px;
+}
+.item-canvas img{max-width:100%; max-height:360px}
+.item-head h1{font-family:"Fraunces",serif; font-weight:900; letter-spacing:-.02em;
+  font-size:clamp(1.8rem,4vw,2.6rem); margin:.3em 0 .15em; line-height:1.05}
+.item-head .lede{font-family:"Fraunces",serif; color:#34322b; margin:.2em 0 1em}
+.skill-note{background:#FFF8EC; border:1px solid #F0DDB6; border-left:3px solid var(--otorange);
+  padding:11px 14px; border-radius:7px; font-size:.9rem; color:#5b5341}
+.meta-table{width:100%; border-collapse:collapse; margin:14px 0 4px; font-size:.9rem}
+.meta-table th{text-align:left; width:96px; padding:7px 10px 7px 0; color:var(--muted);
+  font-weight:500; vertical-align:top; font-family:"IBM Plex Mono",monospace; font-size:.82rem}
+.meta-table td{padding:7px 0; border-bottom:1px solid var(--line)}
+.tags{display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 0}
+.tag{font:.74rem/1 "IBM Plex Mono",monospace; color:var(--muted);
+  background:#F1EFE6; border:1px solid var(--line); border-radius:999px; padding:5px 9px}
+
+/* ---------- downloads (bold action bar) ---------- */
+.downloads{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:22px 0 0}
+.dl-btn{display:inline-flex; align-items:center; gap:7px; cursor:pointer; text-decoration:none;
+  font:600 .9rem "IBM Plex Sans",sans-serif; color:var(--ink); background:#fff;
+  border:1.5px solid var(--line-strong); border-radius:10px; padding:10px 16px;
+  transition:transform .15s, box-shadow .15s, border-color .15s, color .15s}
+.dl-btn .dl-ic{flex:none}
+.dl-btn:hover{border-color:var(--otblue); color:var(--otblue); transform:translateY(-1px);
+  box-shadow:0 8px 18px -12px rgba(0,114,178,.6)}
+.dl-primary{background:var(--otblue); color:#fff; border-color:var(--otblue);
+  box-shadow:0 10px 24px -12px rgba(0,114,178,.7)}
+.dl-primary:hover{background:var(--otblue); color:#fff; filter:brightness(1.07)}
+.dl-primary.done{background:var(--otteal); border-color:var(--otteal); color:#fff; filter:none}
+
+/* ---------- code block (collapsed by default) ---------- */
+.code-block{margin:34px 0 0; border:1px solid var(--line-strong); border-radius:12px;
+  overflow:hidden; box-shadow:var(--shadow); background:#1c1b1f}
+.code-head{display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  padding:12px 16px; background:#26242b; list-style:none; user-select:none}
+.code-head::-webkit-details-marker{display:none}
+.code-block[open] .code-head{border-bottom:1px solid #34313b}
+.filename{font-family:"IBM Plex Mono",monospace; font-size:.82rem; color:#cfc9d6}
+.code-toggle{display:inline-flex; align-items:center; font:500 .8rem "IBM Plex Mono",monospace;
+  color:var(--otorange)}
+.code-toggle::before{content:"\25B8"; margin-right:7px}
+.code-toggle::after{content:"View source"}
+.code-block[open] .code-toggle{color:#cfc9d6}
+.code-block[open] .code-toggle::before{content:"\25BE"}
+.code-block[open] .code-toggle::after{content:"Hide source"}
+.code-body{position:relative}
+.code-copy{position:absolute; top:12px; right:14px; z-index:2}
+.copy{font:500 .8rem "IBM Plex Mono",monospace; cursor:pointer; color:#1c1b1f;
+  background:var(--otorange); border:none; padding:7px 13px; border-radius:6px; transition:.15s}
+.copy:hover{filter:brightness(1.08)}
+.copy.done{background:var(--otteal); color:#fff}
+.code-block pre{margin:0; padding:18px 16px; overflow:auto; max-height:560px}
+.code-block code{background:none; border:none; padding:0; color:#e9e6f0;
+  font-family:"IBM Plex Mono",monospace; font-size:.82rem; line-height:1.65; white-space:pre}
+.usage{margin:34px 0 0; max-width:70ch}
+.usage h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.4rem; margin:0 0 .4em}
+.license-note{color:var(--muted); font-size:.92rem}
+
+/* ---------- footer ---------- */
+.site-footer{max-width:1180px; margin:40px auto 0; padding:24px 28px 50px;
+  border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:14px;
+  justify-content:space-between; color:var(--muted); font-size:.86rem}
+.site-footer .fw{font-family:"Fraunces",serif; font-weight:600; color:var(--ink)}
+
+/* ---------- homepage sections (Icons / Templates / Examples) ---------- */
+.group{max-width:var(--maxw); margin:10px auto 0; padding:0 var(--gutter); scroll-margin-top:74px}
+.group[hidden]{display:none}
+.group-head{display:flex; align-items:baseline; gap:12px; padding:20px 0 10px;
+  border-bottom:1px solid var(--line-strong)}
+.group-head h2{margin:0; font-family:"Fraunces",serif; font-weight:600;
+  font-size:1.55rem; letter-spacing:-.01em}
+.group-count{font-family:"IBM Plex Mono",monospace; font-size:.82rem; color:var(--muted);
+  background:#F1EFE6; border:1px solid var(--line); border-radius:999px; padding:3px 9px}
+.group .grid{max-width:none; margin:0; padding:18px 0 6px}
+
+/* ---------- edit contract (template pages) ---------- */
+.skill{margin:36px 0 0}
+.skill-head{display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:12px}
+.skill-head h2{margin:0; font-family:"Fraunces",serif; font-weight:600; font-size:1.4rem}
+.skill-head h2 span{font-family:"IBM Plex Sans",sans-serif; font-weight:400;
+  font-size:.82rem; color:var(--muted)}
+.skill-link-inline{font:500 .82rem "IBM Plex Mono",monospace; color:var(--otblue);
+  text-decoration:none; white-space:nowrap}
+.skill-link-inline:hover{text-decoration:underline}
+.contract-params{width:100%; border-collapse:collapse; margin:.4em 0 .2em; font-size:.9rem}
+.contract-params td{padding:6px 10px 6px 0; border-bottom:1px solid var(--line); vertical-align:top}
+.contract-params td:first-child{width:34%; white-space:nowrap}
+.param-def{color:var(--muted); font-size:.86em}
+.skill-body{background:#fff; border:1px solid var(--line-strong); border-radius:12px;
+  box-shadow:var(--shadow)}
+.skill-body>summary{cursor:pointer; padding:14px 16px; list-style:none;
+  font-family:"IBM Plex Mono",monospace; font-size:.86rem; color:var(--otblue)}
+.skill-body>summary::-webkit-details-marker{display:none}
+.skill-body>summary::before{content:"▸ "; color:var(--otorange)}
+.skill-body[open]>summary{border-bottom:1px solid var(--line)}
+.skill-body[open]>summary::before{content:"▾ "}
+.md{padding:8px 22px 22px; max-width:74ch}
+.md h2,.md h3,.md h4{font-family:"Fraunces",serif; font-weight:600; letter-spacing:-.01em;
+  margin:1.1em 0 .35em}
+.md h2{font-size:1.25rem} .md h3{font-size:1.08rem} .md h4{font-size:.98rem}
+.md p{margin:.5em 0}
+.md ul,.md ol{padding-left:1.3em; margin:.5em 0}
+.md li{margin:.2em 0}
+.md a{color:var(--otblue)}
+.md blockquote{border-left:3px solid var(--otorange); background:#FFF8EC;
+  margin:.8em 0; padding:9px 13px; border-radius:6px; color:#5b5341; font-size:.92rem}
+.md pre.md-code{background:#1c1b1f; border-radius:8px; padding:13px 14px; overflow:auto; margin:.7em 0}
+.md pre.md-code code{background:none; border:none; padding:0; color:#e9e6f0;
+  font-family:"IBM Plex Mono",monospace; font-size:.8rem; line-height:1.6; white-space:pre}
+
+/* ---------- Home / marketing surface ---------- */
+.home{max-width:var(--maxw); margin:0 auto; padding:0 var(--gutter)}
+
+/* figure-led, centred hero — the figure is the largest element */
+.showcase{max-width:880px; margin:0 auto; padding:50px 0 42px; text-align:center}
+/* large brand lockup, centred above the headline (mirrors the navbar wordmark) */
+.hero-logo{display:inline-block; text-decoration:none; font-family:"Fraunces",serif;
+  font-weight:900; letter-spacing:-.025em; line-height:1; margin:0 0 .5em;
+  font-size:clamp(2.6rem,7vw,4.6rem)}
+.hero-logo .tik{color:var(--otblue)}
+.hero-logo .caret{color:var(--otorange); animation:blink 1.2s steps(1) infinite; margin-left:.03em}
+.showcase h1{font-family:"Fraunces",serif; font-weight:900; letter-spacing:-.025em;
+  font-size:clamp(1.55rem,3.6vw,2.3rem); line-height:1.08; margin:0 0 .25em; color:#34322b}
+.show-lede{font-family:"Fraunces",serif; font-weight:400; color:#34322b;
+  font-size:clamp(1.05rem,2vw,1.3rem); max-width:48ch; margin:0 auto 1.5em}
+.show-lede em{font-style:italic; color:var(--otblue)}
+.cta-row{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:1.4em}
+.btn{display:inline-block; text-decoration:none; font-weight:600; font-size:.98rem;
+  padding:12px 20px; border-radius:10px; transition:.15s; border:1.5px solid transparent}
+.btn-primary{background:var(--otblue); color:#fff; box-shadow:0 10px 24px -12px rgba(0,114,178,.7)}
+.btn-primary:hover{filter:brightness(1.06); transform:translateY(-1px)}
+.btn-ghost{border-color:var(--line-strong); color:var(--ink)}
+.btn-ghost:hover{border-color:var(--otblue); color:var(--otblue)}
+
+.cta-band{padding:42px 0; border-top:1px solid var(--line)}
+
+/* ---------- get started (on-page install) ---------- */
+.getstarted{padding:42px 0; border-top:1px solid var(--line); text-align:center}
+.getstarted h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.7rem; margin:0 0 .25em; letter-spacing:-.01em}
+.gs-lede{color:var(--muted); margin:0 0 18px; font-size:1rem}
+.gs-cmds{display:grid; gap:10px; max-width:560px; margin:0 auto}
+.gs-cmds pre{margin:0}
+.gs-cmds code{display:block; text-align:left; padding:10px 14px; border:1px solid var(--line-strong); border-radius:6px; background:var(--paper); color:var(--ink); font:.9rem "IBM Plex Mono",monospace}
+.gs-note{color:var(--muted); margin:16px auto 0; max-width:54ch; font-size:.9rem; line-height:1.5}
+.gs-note a{color:var(--otblue); text-decoration:none; border-bottom:1px solid var(--otblue)}
+
+/* ---------- why-tikz (slim) ---------- */
+.why-tikz-slim{padding:42px 28px 42px; border-top:1px solid var(--line); text-align:center}
+.why-tikz-slim h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.7rem; margin:0 0 .25em; letter-spacing:-.01em}
+.wts-strip{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; max-width:980px; margin:22px auto 0; text-align:left}
+.wts-item{display:flex; flex-direction:column; gap:7px; padding:18px 18px 20px; border:1px solid var(--line-strong); border-radius:10px; background:var(--paper)}
+.wts-num{font:600 .8rem "IBM Plex Mono",monospace; color:var(--otorange); letter-spacing:.04em}
+.wts-item b{font:600 1rem "Fraunces",serif; color:var(--ink)}
+.wts-desc{font:.9rem/1.5 "IBM Plex Sans",sans-serif; color:var(--muted)}
+@media(max-width:680px){.wts-strip{grid-template-columns:1fr}}
+
+/* why-opentikz verdict cards */
+.why-ot{padding:42px 0; border-top:1px solid var(--line); text-align:center}
+.why-ot h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.7rem; margin:0 0 .25em; letter-spacing:-.01em}
+
+.cmp-rows{display:grid; gap:11px; max-width:780px; margin:6px auto 0; text-align:left}
+.cmp-row{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start}
+.cmp-head{padding-bottom:5px; border-bottom:1px solid var(--line)}
+.cmp-head span{font-family:"IBM Plex Mono",monospace; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding-left:1.6em}
+.cmp-x,.cmp-v{position:relative; padding-left:1.6em; font-size:.95rem; line-height:1.45}
+.cmp-x{color:var(--muted)}
+.cmp-x::before{content:"\2717"; position:absolute; left:0; top:0; color:var(--muted)}
+.cmp-v{color:var(--ink); font-weight:500}
+.cmp-v::before{content:"\2713"; position:absolute; left:0; top:0; color:var(--otteal); font-weight:700}
+.cmp-v code{font-size:.85em}
+
+/* stack the two-column sections on narrow screens */
+@media (max-width:720px){
+  .cmp-row{grid-template-columns:1fr; gap:5px}
+  .cmp-head{display:none}
+}
+.cta-band{text-align:center; border-bottom:none}
+.cta-band h2{font-family:"Fraunces",serif; font-weight:900; letter-spacing:-.02em;
+  font-size:clamp(1.6rem,3.4vw,2.4rem); margin:0 0 .6em}
+.cta-sub{color:var(--muted); font-size:.85rem; margin:1.1em 0 0; font-family:"IBM Plex Mono",monospace}
+
+/* shared carousel (hero + how-to-use) */
+.carousel{display:flex; align-items:center; gap:10px}
+.car-track{flex:1; min-width:0}
+.demo-slide{display:none}
+.demo-slide.active{display:block; animation:fade .25s both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.car-nav{flex:none; width:40px; height:40px; border-radius:50%; cursor:pointer; font-size:1.05rem;
+  background:#fff; border:1.5px solid var(--line-strong); color:var(--ink); transition:.15s}
+.car-nav:hover{border-color:var(--otblue); color:var(--otblue)}
+.hero-carousel .car-nav{width:34px; height:34px; padding:0; border:none; background:none;
+  font-size:1.9rem; line-height:1; color:var(--muted); box-shadow:none}
+.hero-carousel .car-nav:hover{color:var(--otblue); border:none; transform:none}
+.car-dots{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:20px}
+.demo-dot{cursor:pointer; font:500 .76rem "IBM Plex Mono",monospace; color:var(--muted);
+  background:#fff; border:1.5px solid var(--line-strong); border-radius:999px; padding:5px 11px; transition:.15s}
+.demo-dot:hover{border-color:var(--otblue)}
+.demo-dot.active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+
+/* how-to-use section */
+.howto{margin:36px 0 0; padding-top:36px; border-top:1px solid var(--line); text-align:center}
+.howto h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.7rem; margin:0 0 .2em; letter-spacing:-.01em}
+.howto-tabs{margin:6px 0 18px}
+.howto-carousel .demo-slide{min-height:420px}            /* fixed height: no section jump */
+/* steps layout */
+.howto-steps{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; align-items:start}
+.howto-step{border:1px solid var(--line); border-radius:8px; padding:14px}
+.howto-step-n{display:inline-grid; place-items:center; width:24px; height:24px; border-radius:999px;
+  background:var(--otblue); color:#fff; font:600 .8rem/1 "IBM Plex Mono",monospace}
+.howto-step-vis{min-height:104px; display:grid; place-items:center; margin:10px 0}
+.howto-step-vis img{max-height:104px; max-width:100%; width:auto; height:auto}
+.howto-step-cap{margin:0; color:var(--muted); font-size:.85rem}
+/* inout layout */
+.howto-flow{display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:center}
+.howto-cell{margin:0; border:1px solid var(--line); border-radius:8px; padding:12px;
+  display:grid; place-items:center; min-height:280px}
+.howto-cell img{max-height:260px; max-width:100%; width:auto; height:auto}
+.howto-cell figcaption,.howto-arrow figcaption{font-family:"IBM Plex Mono",monospace; font-size:.7rem; color:var(--muted); margin-top:6px}
+.howto-codes{display:grid; gap:7px; justify-items:center}
+.howto-codes code{display:block; padding:3px 10px; border:1px solid var(--line-strong); border-radius:5px}
+/* describe cell as a mini terminal showing the skill command */
+.howto-term{border:none}
+.howto-term-box{width:100%; max-width:30ch; background:var(--paper); border:1px solid var(--line-strong); box-shadow:0 1px 0 var(--line-strong); border-radius:8px; padding:11px 13px; text-align:left; font-family:"IBM Plex Mono",monospace}
+.howto-term-bar{display:flex; gap:6px; margin-bottom:9px}
+.howto-term-bar span{width:9px; height:9px; border-radius:999px}
+.howto-term-bar span:nth-child(1){background:var(--otorange)}
+.howto-term-bar span:nth-child(2){background:var(--otblue)}
+.howto-term-bar span:nth-child(3){background:var(--otteal)}
+.howto-term-cmd{display:block; background:none; border:none; padding:0; color:var(--otteal); font-size:.78rem; margin-bottom:7px}
+.howto-term-text{display:block; background:none; border:none; padding:0; color:var(--ink); font-size:.86rem; line-height:1.55; white-space:normal; overflow-wrap:anywhere}
+.howto-ph{color:var(--muted); font-family:"IBM Plex Mono",monospace; font-size:.8rem;
+  border-style:dashed}
+.howto-arrow{display:grid; gap:6px; justify-items:center; color:var(--muted)}
+.howto-arrow-glyph{display:inline-block; font-size:1.5rem; line-height:1; color:var(--muted)}
+.howto-cap{margin:0 auto 18px; max-width:60ch; color:var(--muted); font-size:.9rem}
+
+/* hero figure carousel */
+.hero-carousel{margin:26px auto 0; max-width:760px}
+.hero-slide{display:none}
+.hero-slide.active{display:block; animation:fade .25s both}
+.hero-fig{margin:0; display:flex; flex-direction:column; align-items:center; gap:14px}
+.hero-fig img{width:100%; height:300px; object-fit:contain}
+.hero-cap{display:flex; align-items:center; gap:10px; font:.95rem "IBM Plex Sans",sans-serif}
+.hero-cap a{color:var(--ink); text-decoration:none; border-bottom:1px solid var(--line-strong)}
+.hero-cap a:hover{color:var(--otblue); border-color:var(--otblue)}
+.hero-dot{width:9px; height:9px; padding:0; border-radius:50%; cursor:pointer;
+  background:transparent; border:1.5px solid var(--line-strong)}
+.hero-dot:hover{border-color:var(--otblue)}
+.hero-dot.active{background:var(--ink); border-color:var(--ink)}
+
+/* Browse tool-surface header */
+.hero-browse{padding-top:40px}
+.browse-title{font-family:"Fraunces",serif; font-weight:900; letter-spacing:-.02em;
+  font-size:clamp(1.7rem,4vw,2.4rem); margin:0 0 .5em}
+
+@media(max-width:720px){
+  :root{--gutter:18px}            /* one place sets the mobile gutter for every container */
+  .item-top{grid-template-columns:1fr; gap:22px}
+  /* navbar collapses to a hamburger; links become an overlay dropdown */
+  .nav-inner{padding:10px var(--gutter); gap:10px; flex-wrap:nowrap; position:relative}
+  .nav-burger{display:flex; position:absolute; right:var(--gutter); top:50%;
+    transform:translateY(-50%)}
+  .nav-links{position:absolute; top:calc(100% + 1px); left:0; right:0; margin:0;
+    flex-direction:column; flex-wrap:nowrap; align-items:stretch; gap:0;
+    background:rgba(251,250,246,.98); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); box-shadow:0 14px 30px rgba(27,26,22,.09);
+    max-height:0; overflow-y:hidden; transition:max-height .26s ease; padding:0 var(--gutter)}
+  .nav-toggle:checked ~ .nav-links{max-height:80vh; overflow-y:auto; padding:4px var(--gutter) 10px}
+  .nav-links a{padding:13px 6px; font-size:1rem; border-radius:0;
+    border-bottom:1px solid var(--line)}
+  .nav-links a:last-child{border-bottom:0}
+  /* burger → X when open */
+  .nav-toggle:checked ~ .nav-burger span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+  .nav-toggle:checked ~ .nav-burger span:nth-child(2){opacity:0}
+  .nav-toggle:checked ~ .nav-burger span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+  .hero{padding:34px 20px 8px}
+  .showcase{padding:32px 0 26px}
+  .howto-steps,.howto-flow{grid-template-columns:1fr}
+  .howto-arrow-glyph{transform:rotate(90deg)}
+  .carousel{gap:6px}
+  .car-nav{width:34px; height:34px}
+}
+
+"""
+
+APP_JS = r"""(function () {
+  // ---- search + filter (index page) ----
+  var catalogEl = document.getElementById('catalog');
+  var gallery = document.getElementById('gallery');
+  if (catalogEl && gallery) {
+    var data = JSON.parse(catalogEl.textContent);
+    var cards = Array.prototype.slice.call(gallery.querySelectorAll('.card'));
+    var groups = Array.prototype.slice.call(gallery.querySelectorAll('.group'));
+    var byId = {};
+    cards.forEach(function (c) { byId[c.getAttribute('data-id')] = c; });
+    var searchEl = document.getElementById('search');
+    var countEl = document.getElementById('count');
+    var emptyEl = document.getElementById('empty');
+    var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+    var activeType = 'all';
+
+    // support ?q= (prefill+run) and ?focus= from the Home search hand-off
+    var params = new URLSearchParams(location.search);
+    var q0 = params.get('q');
+    if (q0 && searchEl) searchEl.value = q0;
+
+    var fuse = window.Fuse ? new window.Fuse(data, {
+      includeScore: true, threshold: 0.38, ignoreLocation: true,
+      keys: [
+        { name: 'name', weight: 3 }, { name: 'tags', weight: 2 },
+        { name: 'domain', weight: 1.5 }, { name: 'id', weight: 1 },
+        { name: 'description', weight: 1 }
+      ]
+    }) : null;
+
+    function apply() {
+      var q = (searchEl.value || '').trim();
+      var rank = {};
+      var matched = null;          // null = no query (show all)
+      if (q && fuse) {
+        matched = {};
+        fuse.search(q).forEach(function (r, i) { matched[r.item.id] = true; rank[r.item.id] = i; });
+      }
+      var shown = 0;
+      cards.forEach(function (c) {
+        var id = c.getAttribute('data-id');
+        var typeOk = activeType === 'all' || c.getAttribute('data-type') === activeType;
+        var searchOk = !matched || matched[id];
+        if (typeOk && searchOk) {
+          c.style.display = '';
+          c.style.order = (id in rank) ? rank[id] : 0;
+          shown++;
+        } else {
+          c.style.display = 'none';
+        }
+      });
+      // hide a section when it has no visible cards (or is filtered out by type)
+      groups.forEach(function (g) {
+        var vis = g.querySelectorAll('.card:not([style*="display: none"])').length;
+        g.hidden = vis === 0;
+        var cnt = g.querySelector('[data-count]');
+        if (cnt) cnt.textContent = vis;
+      });
+      if (countEl) countEl.textContent = shown + (shown === 1 ? ' resource' : ' resources');
+      if (emptyEl) emptyEl.hidden = shown !== 0;
+    }
+
+    if (searchEl) searchEl.addEventListener('input', apply);
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        chips.forEach(function (x) { x.classList.remove('active'); });
+        chip.classList.add('active');
+        activeType = chip.getAttribute('data-type');
+        apply();
+      });
+    });
+    apply();
+    if (searchEl && (q0 || params.get('focus'))) searchEl.focus();
+
+    // ---- active-section highlight (only the section links; Browse stays active) ----
+    var sectionLinks = {};
+    ['icons', 'templates', 'examples'].forEach(function (k) {
+      var a = document.querySelector('.nav-links a[data-nav="' + k + '"]');
+      if (a) sectionLinks[k] = a;
+    });
+    if (Object.keys(sectionLinks).length && 'IntersectionObserver' in window) {
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting && sectionLinks[en.target.id]) {
+            Object.keys(sectionLinks).forEach(function (k) { sectionLinks[k].classList.remove('active'); });
+            sectionLinks[en.target.id].classList.add('active');
+          }
+        });
+      }, { rootMargin: '-45% 0px -50% 0px' });
+      groups.forEach(function (g) { obs.observe(g); });
+    }
+  }
+
+  // ---- keyboard: '/' focuses search (or jumps to Browse); Esc clears + blurs ----
+  document.addEventListener('keydown', function (e) {
+    var s = document.getElementById('search');
+    var t = e.target || {};
+    var typing = /^(input|textarea|select)$/i.test(t.tagName || '') || t.isContentEditable;
+    if (e.key === '/' && !typing && s) {
+      e.preventDefault();
+      s.focus();
+    } else if (e.key === 'Escape' && s && document.activeElement === s) {
+      s.value = '';
+      s.dispatchEvent(new Event('input'));
+      s.blur();
+    }
+  });
+
+  // ---- mobile nav: close the hamburger menu on link tap / Esc ----
+  var navToggle = document.getElementById('nav-toggle');
+  if (navToggle) {
+    document.querySelectorAll('.nav-links a').forEach(function (a) {
+      a.addEventListener('click', function () { navToggle.checked = false; });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && navToggle.checked) navToggle.checked = false;
+    });
+  }
+
+  // ---- copy-to-clipboard (item page) ----
+  document.querySelectorAll('.copy, .dl-copy').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();          // primary copy lives outside <summary>, but be safe
+      var el = document.getElementById(btn.getAttribute('data-target'));
+      if (!el) return;
+      navigator.clipboard.writeText(el.textContent).then(function () {
+        var old = btn.innerHTML;   // innerHTML preserves any inline icon on restore
+        btn.innerHTML = 'Copied ✓';
+        btn.classList.add('done');
+        setTimeout(function () { btn.innerHTML = old; btn.classList.remove('done'); }, 1600);
+      });
+    });
+  });
+
+  // ---- downloads (item page): .tex from inlined source, PNG via canvas ----
+  function triggerDownload(href, name) {
+    var a = document.createElement('a');
+    a.href = href; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  document.querySelectorAll('[data-tex]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.getElementById(btn.getAttribute('data-tex'));
+      if (!el) return;
+      var url = URL.createObjectURL(new Blob([el.textContent], { type: 'application/x-tex' }));
+      triggerDownload(url, btn.getAttribute('data-name') || 'figure.tex');
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    });
+  });
+  document.querySelectorAll('[data-png]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var img = new Image();
+      img.onload = function () {
+        var scale = 3;
+        var w = img.naturalWidth || 600, h = img.naturalHeight || 400;
+        var c = document.createElement('canvas');
+        c.width = w * scale; c.height = h * scale;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';                 // figures assume a white background
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (blob) {
+          var url = URL.createObjectURL(blob);
+          triggerDownload(url, btn.getAttribute('data-name') || 'figure.png');
+          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        }, 'image/png');
+      };
+      img.src = btn.getAttribute('data-png');
+    });
+  });
+
+  // ---- per-instance carousels (supports multiple on one page) ----
+  // Each .carousel keeps its OWN active index; all inner queries are scoped to the
+  // element so the skills demo (#skills-carousel/.demo-slide/.demo-dot) never shares
+  // state across multiple carousels on the same page.
+  var carousels = Array.prototype.slice.call(document.querySelectorAll('.carousel'));
+  carousels.forEach(function (car) {
+    var slides = Array.prototype.slice.call(
+      car.querySelectorAll('.demo-slide, .hero-slide'));
+    if (!slides.length) return;
+    // dots live in a sibling .car-dots (or any node with [data-dots-for=id])
+    var dotWrap = car.parentNode
+      ? car.parentNode.querySelector('.car-dots')
+      : null;
+    var dots = dotWrap
+      ? Array.prototype.slice.call(dotWrap.querySelectorAll('.demo-dot, .hero-dot'))
+      : [];
+    var idx = 0;
+    function show(n) {
+      idx = (n + slides.length) % slides.length;
+      slides.forEach(function (s, i) { s.classList.toggle('active', i === idx); });
+      dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
+    }
+    var prev = car.querySelector('.car-prev'), next = car.querySelector('.car-next');
+    if (prev) prev.addEventListener('click', function () { show(idx - 1); });
+    if (next) next.addEventListener('click', function () { show(idx + 1); });
+    dots.forEach(function (d, i) { d.addEventListener('click', function () { show(i); }); });
+    // keyboard only when THIS carousel (or something inside it) has focus
+    car.addEventListener('keydown', function (e) {
+      var t = e.target || {};
+      if (/^(input|textarea|select)$/i.test(t.tagName || '')) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); show(idx - 1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); show(idx + 1); }
+    });
+    show(0);
+
+    // ---- autoplay (opt-in via data-autoplay; honors reduced motion) ----
+    // Pauses on hover, keyboard focus, or a hidden tab.
+    // Manual navigation restarts the countdown so the slide never advances
+    // the instant after you click.
+    var prefersReduced = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (car.hasAttribute('data-autoplay') && slides.length > 1 && !prefersReduced) {
+      var autoMs = parseInt(car.getAttribute('data-interval'), 10) || 5000;
+      var hover = false, focused = false, timer = null;
+      function autoActive() { return !(hover || focused || document.hidden); }
+      function start() {
+        if (timer) clearInterval(timer);
+        timer = setInterval(function () { if (autoActive()) show(idx + 1); }, autoMs);
+      }
+      car.addEventListener('mouseenter', function () { hover = true; });
+      car.addEventListener('mouseleave', function () { hover = false; });
+      car.addEventListener('focusin', function () { focused = true; });
+      car.addEventListener('focusout', function () { focused = false; });
+      car.addEventListener('click', start);    // manual nav resets the cadence
+      car.addEventListener('keydown', start);
+      if (dotWrap) {                            // tabs/dots live outside .carousel
+        dotWrap.addEventListener('click', start);
+        dotWrap.addEventListener('keydown', start);
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) start();         // realign cadence when the tab returns
+      });
+      start();
+    }
+  });
+
+})();
+"""
+
+
+if __name__ == "__main__":
+    raise SystemExit(build(repo_root()))

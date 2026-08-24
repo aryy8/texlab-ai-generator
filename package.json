@@ -12,7 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "templates:previews": "node scripts/generate-template-previews.mjs",
-    "templates:import": "node scripts/import-template-pdf.mjs"
+    "templates:import": "node scripts/import-template-pdf.mjs",
+    "opentikz:clone": "git clone --depth 1 https://github.com/opentikz/opentikz.git backend/opentikz",
+    "opentikz:index": "node backend/scripts/build-catalog-index.mjs",
+    "opentikz:index:force": "node backend/scripts/build-catalog-index.mjs --force",
+    "opentikz:retrieve": "node backend/scripts/smoke-retrieve.mjs",
+    "opentikz:server": "node backend/server.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
