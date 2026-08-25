@@ -4,6 +4,7 @@ import {
   generateLaTeX,
   refineLaTeX,
   repairLaTeX,
+  isAbortError,
   type AspectRatio,
   type ArrowStyle,
   type ColorMode,
@@ -27,11 +28,17 @@ import { openInOverleaf, downloadFigureZip } from "@/lib/overleaf-export";
 import { FigureHistoryDrawer } from "@/components/FigureHistoryDrawer";
 import { FormatSelector } from "@/components/FormatSelector";
 import { ModelSelector } from "@/components/ModelSelector";
+import { SketchingPreview } from "@/components/SketchingPreview";
+import { BlueprintBusy } from "@/components/BlueprintBusy";
 import { loadStoredModel, saveStoredModel, type GenerationModelId } from "@/lib/models";
 import {
   consumeWorkspaceHandoff,
   type WorkspaceHandoff,
 } from "@/lib/workspace-handoff";
+import {
+  loadWorkspaceSession,
+  saveWorkspaceSession,
+} from "@/lib/workspace-session";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,13 +63,13 @@ import {
   Sigma,
   LineChart,
   GitBranch,
-  Loader2,
   CircleX,
   TriangleAlert,
   Download,
   ExternalLink,
   Moon,
   Sun,
+  Square,
 } from "lucide-react";
 
 interface LatexVersion {
@@ -122,11 +129,31 @@ const STYLE_OPTIONS: Record<OutputType, Array<{ value: string; label: string }>>
 };
 
 const GENERATION_STAGES = [
-  "Reading your description...",
-  "Planning the layout...",
-  "Writing LaTeX code...",
-  "Polishing details...",
-  "Almost there...",
+  "Reading your prompt…",
+  "Matching a figure template…",
+  "Laying out nodes & edges…",
+  "Writing the TikZ source…",
+  "Almost there…",
+];
+
+const REFINE_STAGES = [
+  "Understanding your edit…",
+  "Updating the figure…",
+  "Rewriting LaTeX…",
+  "Almost there…",
+];
+
+const COMPILE_STAGES = [
+  "Compiling with pdflatex…",
+  "Rendering the PDF…",
+  "Almost there…",
+];
+
+const REPAIR_STAGES = [
+  "Reading the TeX log…",
+  "Fixing compile errors…",
+  "Trying again…",
+  "Almost there…",
 ];
 
 type PipelineStage = "idle" | "generating" | "compiling" | "repairing" | "fit_ok" | "fit_warn" | "error";
@@ -134,6 +161,8 @@ type PipelineStage = "idle" | "generating" | "compiling" | "repairing" | "fit_ok
 const Workspace = () => {
   const location = useLocation();
   const handoffBootRef = useRef(false);
+  const sessionReadyRef = useRef(false);
+  const skipSessionSaveRef = useRef(false);
 
   const [input, setInput] = useState("");
   const [versions, setVersions] = useState<LatexVersion[]>([]);
@@ -150,9 +179,11 @@ const Workspace = () => {
   const [chatDraft, setChatDraft] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isRefining, setIsRefining] = useState(false);
+  const [showSketchOverlay, setShowSketchOverlay] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const [stageIndex, setStageIndex] = useState(0);
   const compileAbortRef = useRef<AbortController | null>(null);
+  const generationAbortRef = useRef<AbortController | null>(null);
   const repairAttemptsRef = useRef(0);
   // Caches compiled results per document string so switching version tabs is
   // instant instead of recompiling.
@@ -260,34 +291,115 @@ const Workspace = () => {
     pendingAutoGenerateRef.current = handoff.autoGenerate && Boolean(handoff.prompt.trim());
   };
 
+  const applySession = (session: NonNullable<ReturnType<typeof loadWorkspaceSession>>) => {
+    manualSelectionRef.current = true;
+    setInput(session.input);
+    setVersions(session.versions);
+    setActiveVersion(
+      Math.min(Math.max(session.activeVersion, 0), Math.max(session.versions.length - 1, 0)),
+    );
+    setChatMessages(session.chatMessages);
+    setOutputType(session.outputType);
+    setStyle(session.style);
+    setColorMode(session.colorMode);
+    setDensity(session.density);
+    setAspectRatio(session.aspectRatio);
+    setArrowStyle(session.arrowStyle);
+    setDocumentFit(session.documentFit);
+    setReferences(session.references ?? []);
+    setGenerationModel(session.generationModel);
+    saveStoredModel(session.generationModel);
+    setCurrentFigureId(session.currentFigureId);
+    setCodeView(session.codeView === "source" ? "source" : "paste");
+    setTypeExpanded(false);
+    pendingAutoGenerateRef.current = false;
+    repairAttemptsRef.current = 2; // skip auto-repair storm on restored compile
+  };
+
   useEffect(() => {
     if (handoffBootRef.current) return;
     handoffBootRef.current = true;
     const fromState = (location.state as { handoff?: WorkspaceHandoff } | null)?.handoff;
     const handoff = fromState ?? consumeWorkspaceHandoff();
-    if (handoff) applyHandoff(handoff);
-
-    const params = new URLSearchParams(location.search);
-    const templateId = params.get("template");
-    if (templateId && !handoff) {
-      const template = FIGURE_TEMPLATES.find((t) => t.id === templateId);
-      if (template) {
-        manualSelectionRef.current = true;
-        setInput(template.prompt);
-        setOutputType(template.outputType);
-        setStyle(template.style);
-        setColorMode(template.colorMode);
-        setDensity(template.density);
-        setAspectRatio(template.aspectRatio);
-        setDocumentFit(template.documentFit);
-        setArrowStyle(template.arrowStyle);
-        setTypeExpanded(false);
-        setChatMessages([{ id: `tpl-${template.id}`, role: "user", content: template.prompt }]);
-        pendingAutoGenerateRef.current = true;
+    if (handoff) {
+      applyHandoff(handoff);
+      skipSessionSaveRef.current = true;
+    } else {
+      const params = new URLSearchParams(location.search);
+      const templateId = params.get("template");
+      if (templateId) {
+        const template = FIGURE_TEMPLATES.find((t) => t.id === templateId);
+        if (template) {
+          manualSelectionRef.current = true;
+          setInput(template.prompt);
+          setOutputType(template.outputType);
+          setStyle(template.style);
+          setColorMode(template.colorMode);
+          setDensity(template.density);
+          setAspectRatio(template.aspectRatio);
+          setDocumentFit(template.documentFit);
+          setArrowStyle(template.arrowStyle);
+          setTypeExpanded(false);
+          setChatMessages([{ id: `tpl-${template.id}`, role: "user", content: template.prompt }]);
+          pendingAutoGenerateRef.current = true;
+          skipSessionSaveRef.current = true;
+        }
+      } else {
+        const session = loadWorkspaceSession();
+        if (session && (session.versions.length > 0 || session.input.trim() || session.chatMessages.length > 0)) {
+          applySession(session);
+          skipSessionSaveRef.current = true;
+        }
       }
     }
+    sessionReadyRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once on mount
   }, []);
+
+  // Persist workspace so refresh keeps the current figure / chat.
+  useEffect(() => {
+    if (!sessionReadyRef.current) return;
+    if (skipSessionSaveRef.current) {
+      skipSessionSaveRef.current = false;
+      return;
+    }
+    if (isGenerating || isRefining) return;
+    saveWorkspaceSession({
+      input,
+      versions,
+      activeVersion,
+      chatMessages,
+      outputType,
+      style,
+      colorMode,
+      density,
+      aspectRatio,
+      arrowStyle,
+      documentFit,
+      references,
+      generationModel,
+      currentFigureId,
+      codeView,
+    });
+  }, [
+    input,
+    versions,
+    activeVersion,
+    chatMessages,
+    outputType,
+    style,
+    colorMode,
+    density,
+    aspectRatio,
+    arrowStyle,
+    documentFit,
+    references,
+    generationModel,
+    currentFigureId,
+    codeView,
+    isGenerating,
+    isRefining,
+  ]);
 
   const selectType = (value: OutputType) => {
     manualSelectionRef.current = true;
@@ -459,6 +571,16 @@ const Workspace = () => {
     setVersions((prev) => prev.map((v, i) => (i === activeVersion ? { ...v, latex } : v)));
   };
 
+  const handleStop = () => {
+    generationAbortRef.current?.abort();
+    compileAbortRef.current?.abort();
+    generationAbortRef.current = null;
+    setIsGenerating(false);
+    setIsRefining(false);
+    setIsPreviewLoading(false);
+    pushChat({ role: "assistant", content: "Stopped." });
+  };
+
   const handleGenerate = async (promptOverride?: string) => {
     const prompt = (promptOverride ?? input).trim();
     if (!prompt) return;
@@ -469,13 +591,23 @@ const Workspace = () => {
       setOutputType(resolvedType);
       setStyle(resolvedStyle);
     }
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
     setIsGenerating(true);
     repairAttemptsRef.current = 0;
     fitRefineAttemptsRef.current = 0;
     setFitStatus("idle");
     setCurrentFigureId(null);
     try {
-      const latex = await generateLaTeX(prompt, preferences, references, generationModel);
+      const latex = await generateLaTeX(
+        prompt,
+        preferences,
+        references,
+        generationModel,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
       repairAttemptsRef.current = 0;
       setVersions([{ latex, label: "Original" }]);
       setActiveVersion(0);
@@ -485,11 +617,15 @@ const Workspace = () => {
         meta: `${resolvedType} · ${resolvedStyle}`,
       });
     } catch (error) {
+      if (isAbortError(error) || controller.signal.aborted) return;
       console.error(error);
       const message = error instanceof Error ? error.message : "Failed to generate LaTeX.";
       toast.error(message);
       pushChat({ role: "assistant", content: message });
     } finally {
+      if (generationAbortRef.current === controller) {
+        generationAbortRef.current = null;
+      }
       setIsGenerating(false);
     }
   };
@@ -497,6 +633,9 @@ const Workspace = () => {
   const handleRefine = async (instructionOverride?: string) => {
     const instruction = (instructionOverride ?? refineInput).trim();
     if (!instruction || !output) return;
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
     setIsRefining(true);
     try {
       // Attach a rasterized snapshot of the current preview so the vision
@@ -504,6 +643,7 @@ const Workspace = () => {
       const refineRefs = [...references];
       if (previewUrl && !previewError) {
         const previewImage = await pdfUrlToPngDataUrl(previewUrl);
+        if (controller.signal.aborted) return;
         if (previewImage) {
           refineRefs.push({
             kind: "image",
@@ -513,7 +653,15 @@ const Workspace = () => {
         }
       }
 
-      const latex = await refineLaTeX(instruction, output, preferences, refineRefs, generationModel);
+      const latex = await refineLaTeX(
+        instruction,
+        output,
+        preferences,
+        refineRefs,
+        generationModel,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
       if (latex.trim() === output.trim()) {
         toast.info("The model returned unchanged code. Try describing the change more specifically, e.g. which nodes or labels to move.");
         pushChat({
@@ -533,11 +681,15 @@ const Workspace = () => {
         meta: `Revision ${versions.length}`,
       });
     } catch (error) {
+      if (isAbortError(error) || controller.signal.aborted) return;
       console.error(error);
       const message = error instanceof Error ? error.message : "Failed to refine LaTeX.";
       toast.error(message);
       pushChat({ role: "assistant", content: message });
     } finally {
+      if (generationAbortRef.current === controller) {
+        generationAbortRef.current = null;
+      }
       setIsRefining(false);
     }
   };
@@ -785,15 +937,53 @@ const Workspace = () => {
   }, [output]);
 
   useEffect(() => {
-    if (!isGenerating && !isRefining) {
+    const busy = isGenerating || isRefining || isPreviewLoading;
+    if (!busy) {
       setStageIndex(0);
       return;
     }
+    const stages = isRefining
+      ? REFINE_STAGES
+      : isPreviewLoading && !isGenerating
+        ? previewStage === "repairing"
+          ? REPAIR_STAGES
+          : COMPILE_STAGES
+        : GENERATION_STAGES;
+    setStageIndex(0);
     const interval = setInterval(() => {
-      setStageIndex((prev) => Math.min(prev + 1, GENERATION_STAGES.length - 1));
+      setStageIndex((prev) => Math.min(prev + 1, stages.length - 1));
     }, 2200);
     return () => clearInterval(interval);
-  }, [isGenerating, isRefining]);
+  }, [isGenerating, isRefining, isPreviewLoading, previewStage]);
+
+  const codeBusyMessage = (() => {
+    if (isRefining) return REFINE_STAGES[Math.min(stageIndex, REFINE_STAGES.length - 1)];
+    if (isGenerating) return GENERATION_STAGES[Math.min(stageIndex, GENERATION_STAGES.length - 1)];
+    if (isPreviewLoading && previewStage === "repairing") {
+      return REPAIR_STAGES[Math.min(stageIndex, REPAIR_STAGES.length - 1)];
+    }
+    if (isPreviewLoading) return COMPILE_STAGES[Math.min(stageIndex, COMPILE_STAGES.length - 1)];
+    return GENERATION_STAGES[0];
+  })();
+
+  const previewSketchLabel = isPreviewLoading
+    ? previewStage === "repairing"
+      ? "Repairing"
+      : "Compiling"
+    : isRefining
+      ? "Updating"
+      : "Generating";
+
+  const previewBusy = isGenerating || isRefining || isPreviewLoading;
+
+  useEffect(() => {
+    if (previewBusy) {
+      setShowSketchOverlay(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowSketchOverlay(false), 520);
+    return () => window.clearTimeout(timer);
+  }, [previewBusy]);
 
   useEffect(() => {
     if (!pendingAutoGenerateRef.current) return;
@@ -878,7 +1068,7 @@ const Workspace = () => {
             }`}
           >
             {(isGenerating || isRefining || isPreviewLoading) && (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="ws-spinner" aria-hidden />
             )}
             {pipelineLabel}
           </span>
@@ -985,7 +1175,9 @@ const Workspace = () => {
                     <div className="max-w-[94%]">
                       <p className="mb-1 font-mono text-[10px] text-muted-foreground">teXlab</p>
                       <p className="text-shimmer font-mono text-[11px] font-medium">
-                        {isRefining ? "Applying change…" : GENERATION_STAGES[stageIndex]}
+                        {isRefining
+                          ? REFINE_STAGES[Math.min(stageIndex, REFINE_STAGES.length - 1)]
+                          : GENERATION_STAGES[Math.min(stageIndex, GENERATION_STAGES.length - 1)]}
                       </p>
                     </div>
                   </div>
@@ -1119,7 +1311,7 @@ const Workspace = () => {
                         ref={attachButtonRef}
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={references.length >= MAX_REFERENCES}
+                        disabled={references.length >= MAX_REFERENCES || isGenerating || isRefining}
                         title="Attach reference"
                         aria-label="Attach reference"
                         className="relative flex h-7 w-7 items-center justify-center rounded-md ws-icon-btn transition-colors disabled:opacity-40"
@@ -1132,20 +1324,28 @@ const Workspace = () => {
                         )}
                       </button>
 
-                      <Button
-                        type="button"
-                        size="icon"
-                        className="ws-send h-7 w-7 shrink-0 rounded-full border-0 shadow-none"
-                        disabled={!chatDraft.trim() || isGenerating || isRefining}
-                        onClick={() => void handleChatSubmit()}
-                        aria-label={output ? "Send refine" : "Generate"}
-                      >
-                        {isGenerating || isRefining ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
+                      {isGenerating || isRefining || isPreviewLoading ? (
+                        <button
+                          type="button"
+                          className="ws-stop"
+                          onClick={handleStop}
+                          aria-label="Stop generation"
+                          title="Stop"
+                        >
+                          <Square className="h-2.5 w-2.5 fill-current" strokeWidth={0} />
+                        </button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="ws-send h-7 w-7 shrink-0 rounded-full border-0 shadow-none"
+                          disabled={!chatDraft.trim()}
+                          onClick={() => void handleChatSubmit()}
+                          aria-label={output ? "Send refine" : "Generate"}
+                        >
                           <ArrowUp className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1273,7 +1473,9 @@ const Workspace = () => {
                         </div>
                       </div>
 
-                      {output ? (
+                      {isGenerating ? (
+                        <BlueprintBusy message={codeBusyMessage} />
+                      ) : output ? (
                         <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
                           <LatexCode code={codeView === "paste" ? pasteSnippet : output} />
                         </div>
@@ -1283,9 +1485,7 @@ const Workspace = () => {
                             Code
                           </p>
                           <p className="max-w-[16rem] font-heading text-sm text-muted-foreground">
-                            {isGenerating
-                              ? "Writing LaTeX…"
-                              : "Your figure source appears here after you generate."}
+                            Your figure source appears here after you generate.
                           </p>
                         </div>
                       )}
@@ -1339,84 +1539,24 @@ const Workspace = () => {
                         )}
                       </div>
 
-                      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[var(--ws-bg)] p-2">
-                        {!output && !isGenerating && (
+                      <div className="ws-preview-stage relative min-h-0 flex-1 overflow-hidden">
+                        {!output && !previewBusy && !showSketchOverlay && (
                           <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                             PDF preview
                           </p>
                         )}
 
-                        {(isGenerating || isRefining) && (
-                          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--ws-bg)]">
-                            <svg
-                              viewBox="0 0 220 130"
-                              className="w-40 text-primary/70"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              aria-hidden
-                            >
-                              <rect
-                                x="84"
-                                y="8"
-                                width="52"
-                                height="26"
-                                pathLength={100}
-                                className="blueprint-path"
-                              />
-                              <path
-                                d="M 110 34 L 110 56"
-                                pathLength={100}
-                                className="blueprint-path"
-                                style={{ animationDelay: "0.25s" }}
-                              />
-                              <path
-                                d="M 110 56 L 40 56 L 40 88"
-                                pathLength={100}
-                                className="blueprint-path"
-                                style={{ animationDelay: "0.45s" }}
-                              />
-                              <path
-                                d="M 110 56 L 180 56 L 180 88"
-                                pathLength={100}
-                                className="blueprint-path"
-                                style={{ animationDelay: "0.45s" }}
-                              />
-                              <rect
-                                x="14"
-                                y="88"
-                                width="52"
-                                height="26"
-                                pathLength={100}
-                                className="blueprint-path"
-                                style={{ animationDelay: "0.75s" }}
-                              />
-                              <rect
-                                x="154"
-                                y="88"
-                                width="52"
-                                height="26"
-                                pathLength={100}
-                                className="blueprint-path"
-                                style={{ animationDelay: "0.75s" }}
-                              />
-                            </svg>
-                            <span className="text-shimmer font-mono text-[10px] font-semibold uppercase tracking-widest">
-                              {isRefining ? "Updating figure…" : GENERATION_STAGES[stageIndex]}
-                            </span>
+                        {showSketchOverlay && (
+                          <div
+                            className={`absolute inset-0 z-10 transition-opacity duration-500 ease-out ${
+                              previewBusy ? "opacity-100" : "pointer-events-none opacity-0"
+                            }`}
+                          >
+                            <SketchingPreview fill label={previewSketchLabel} />
                           </div>
                         )}
 
-                        {isPreviewLoading && !isGenerating && !isRefining && output && (
-                          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[var(--ws-bg)]">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-                            <span className="text-shimmer font-mono text-[10px] font-semibold uppercase tracking-widest">
-                              {previewStage === "repairing" ? "Fixing errors…" : "Compiling…"}
-                            </span>
-                          </div>
-                        )}
-
-                        {previewError && !isPreviewLoading && !isGenerating && (
+                        {previewError && !previewBusy && (
                           <div className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-[var(--ws-bg)]">
                             <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2">
                               <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-destructive">
@@ -1431,15 +1571,19 @@ const Workspace = () => {
 
                         {previewUrl && !previewError && (
                           <>
-                            <iframe
-                              src={`${previewUrl}#view=FitH&toolbar=0`}
-                              className={`pointer-events-none h-full w-full border-0 transition-opacity duration-300 ${
-                                isGenerating || isPreviewLoading ? "opacity-0" : "opacity-100"
+                            <div
+                              className={`ws-preview-paper transition-opacity duration-700 ease-out ${
+                                previewBusy ? "opacity-0" : "opacity-100"
                               }`}
-                              title="LaTeX Preview"
-                              referrerPolicy="no-referrer"
-                            />
-                            {!isGenerating && !isPreviewLoading && (
+                            >
+                              <iframe
+                                src={`${previewUrl}#view=Fit&toolbar=0`}
+                                className="pointer-events-none h-full w-full border-0 bg-white"
+                                title="LaTeX Preview"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            {!previewBusy && (
                               <button
                                 type="button"
                                 onClick={() => setPreviewOpen(true)}
@@ -1466,14 +1610,16 @@ const Workspace = () => {
               Preview
             </DialogTitle>
           </DialogHeader>
-          <div className="min-h-0 flex-1 bg-background p-3">
+          <div className="ws-preview-stage min-h-0 flex-1">
             {previewUrl && (
-              <iframe
-                src={`${previewUrl}#view=Fit&toolbar=0`}
-                className="h-full w-full border-0"
-                title="LaTeX Preview (expanded)"
-                referrerPolicy="no-referrer"
-              />
+              <div className="ws-preview-paper ws-preview-paper--lg">
+                <iframe
+                  src={`${previewUrl}#view=Fit&toolbar=0`}
+                  className="h-full w-full border-0 bg-white"
+                  title="LaTeX Preview (expanded)"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
             )}
           </div>
         </DialogContent>
@@ -1491,12 +1637,12 @@ const Workspace = () => {
           <span className="flex items-center gap-1.5 px-3">
             {isGenerating || isRefining ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="ws-spinner" aria-hidden />
                 {isRefining ? "refining…" : "generating…"}
               </>
             ) : isPreviewLoading ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="ws-spinner" aria-hidden />
                 {previewStage === "repairing" ? "auto-repairing…" : "compiling…"}
               </>
             ) : previewError ? (

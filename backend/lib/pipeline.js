@@ -8,6 +8,7 @@ import {
   generateBlankCanvas,
   repairLatex,
   reviseFromJudge,
+  summarizeCompileLog,
 } from "./generate.js";
 import { compileOnce, MAX_REPAIR_ATTEMPTS } from "./compile.js";
 import { judgeFigure, SCORE_FLOOR } from "./judge.js";
@@ -93,8 +94,16 @@ export async function runPipeline(prompt, options = {}) {
     }
   }
 
+  const compileSummary = compiled.ok ? null : summarizeCompileLog(compiled.log);
+  const error = compiled.ok
+    ? null
+    : compileSummary
+      ? `LaTeX compilation failed after ${compiled.repairCount} repair(s):\n${compileSummary}`
+      : `Generation failed after ${compiled.repairCount} compile repair(s).`;
+
   return {
     ok: compiled.ok,
+    error,
     prompt: trimmed,
     tex: compiled.latex,
     pdfBase64: toBase64(compiled.pdf),

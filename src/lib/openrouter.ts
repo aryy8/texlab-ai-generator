@@ -10,6 +10,13 @@ async function readErrorMessage(response: Response): Promise<string> {
     return `Server error: ${response.status}`;
 }
 
+function isAbortError(error: unknown): boolean {
+    return (
+        (error instanceof DOMException && error.name === "AbortError")
+        || (error instanceof Error && error.name === "AbortError")
+    );
+}
+
 export type OutputType = "diagram" | "table" | "equation" | "plot";
 export type ColorMode = "monochrome" | "academic" | "pastel" | "vivid";
 export type Density = "compact" | "normal" | "detailed";
@@ -42,13 +49,14 @@ export type GenerationModel = import("@/lib/models").GenerationModelId;
  * OpenTikZ pipeline (retrieve → generate → compile → judge).
  * Used for fresh diagram generation from the web app.
  */
-async function requestOpenTikzGenerate(prompt: string): Promise<string> {
+async function requestOpenTikzGenerate(prompt: string, signal?: AbortSignal): Promise<string> {
     const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({ prompt }),
+        signal,
     });
 
     let data: Record<string, unknown> = {};
@@ -62,7 +70,17 @@ async function requestOpenTikzGenerate(prompt: string): Promise<string> {
     }
 
     if (!response.ok) {
-        if (typeof data.error === "string") throw new Error(data.error);
+        if (typeof data.error === "string" && data.error.trim()) {
+            throw new Error(data.error);
+        }
+        if (typeof data.compileLog === "string" && data.compileLog.trim()) {
+            const lines = data.compileLog
+                .split("\n")
+                .filter((l) => /^!/.test(l) || /^l\.\d+/.test(l))
+                .slice(0, 6)
+                .join("\n");
+            throw new Error(lines || "LaTeX compilation failed. Try refining the prompt.");
+        }
         throw new Error(`Server error: ${response.status}`);
     }
 
@@ -84,13 +102,14 @@ async function requestLatex(body: {
     baseLatex?: string;
     references?: Reference[];
     model?: GenerationModel;
-}): Promise<string> {
+}, signal?: AbortSignal): Promise<string> {
     const response = await fetch("/api/generate-latex", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal,
     });
 
     if (!response.ok) {
@@ -106,13 +125,14 @@ export const generateLaTeX = (
     preferences: GenerationPreferences,
     references: Reference[] = [],
     model: GenerationModel = "auto",
+    signal?: AbortSignal,
 ): Promise<string> => {
     // Diagrams go through the OpenTikZ retrieve/generate pipeline.
     // Tables / equations / plots keep the classic generate-latex path.
     if (preferences.outputType === "diagram") {
-        return requestOpenTikzGenerate(prompt);
+        return requestOpenTikzGenerate(prompt, signal);
     }
-    return requestLatex({ prompt, preferences, references, model });
+    return requestLatex({ prompt, preferences, references, model }, signal);
 };
 
 export const refineLaTeX = (
@@ -121,11 +141,15 @@ export const refineLaTeX = (
     preferences: GenerationPreferences,
     references: Reference[] = [],
     model: GenerationModel = "auto",
-): Promise<string> => requestLatex({ prompt: instruction, preferences, mode: "refine", baseLatex, references, model });
+    signal?: AbortSignal,
+): Promise<string> => requestLatex({ prompt: instruction, preferences, mode: "refine", baseLatex, references, model }, signal);
 
 export const repairLaTeX = (
     errorLog: string,
     baseLatex: string,
     preferences: GenerationPreferences,
     model: GenerationModel = "auto",
-): Promise<string> => requestLatex({ prompt: errorLog, preferences, mode: "repair", baseLatex, model });
+    signal?: AbortSignal,
+): Promise<string> => requestLatex({ prompt: errorLog, preferences, mode: "repair", baseLatex, model }, signal);
+
+export { isAbortError };

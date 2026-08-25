@@ -14,7 +14,32 @@ function stripCodeFence(text) {
   if (t.startsWith("```")) {
     t = t.replace(/^```(?:latex|tex)?\s*/i, "").replace(/\s*```$/i, "").trim();
   }
-  return t;
+  // Models often prepend analysis before the real document.
+  const docClass = t.search(/\\documentclass\b/);
+  const beginTikz = t.search(/\\begin\s*\{tikzpicture\}/);
+  const starts = [docClass, beginTikz].filter((i) => i >= 0);
+  if (starts.length > 0) {
+    t = t.slice(Math.min(...starts));
+  }
+  const endDoc = t.search(/\\end\s*\{document\}/);
+  if (endDoc >= 0) {
+    t = t.slice(0, endDoc + "\\end{document}".length);
+  } else {
+    t = t.replace(/\\end\s*\{document\}[\s\S]*$/i, "\\end{document}");
+  }
+  return t.trim();
+}
+
+/** Pull the most useful TeX error lines from a compile log. */
+export function summarizeCompileLog(log, maxLines = 8) {
+  if (!log) return "";
+  const lines = String(log)
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter(Boolean);
+  const errors = lines.filter((l) => /^!/.test(l) || /^l\.\d+/.test(l));
+  const picked = (errors.length ? errors : lines.slice(-maxLines)).slice(0, maxLines);
+  return picked.join("\n").slice(0, 1200);
 }
 
 function resolveFigureFiles(catalogEntry) {
@@ -139,7 +164,9 @@ Write the complete standalone .tex file.`;
 export async function repairLatex(latex, compileLog, options = {}) {
   const system = `You fix LaTeX/TikZ compilation errors.
 Return ONLY the complete corrected standalone .tex file.
-Fix only what is needed for compilation. No markdown fences.`;
+The first non-whitespace character of your reply MUST be a backslash (start of \\documentclass).
+Do not explain the error. Do not apologize. No markdown fences. No prose before or after the code.
+Fix only what is needed for compilation.`;
 
   const user = `Compilation failed. Error log:
 \`\`\`
@@ -151,7 +178,7 @@ Current source:
 ${latex}
 \`\`\`
 
-Return the fixed complete .tex file.`;
+Return the fixed complete .tex file only.`;
 
   const { content, model } = await createChatCompletion(
     [

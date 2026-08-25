@@ -6,7 +6,7 @@ import { createEmbeddings } from "./openrouter.js";
 import { getCatalogIndex } from "./catalog-index.js";
 
 /** Below this best-score, treat as no-match → blank-canvas fallback. */
-export const MATCH_THRESHOLD = 0.42;
+export const MATCH_THRESHOLD = 0.36;
 
 export function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length !== b.length) return 0;
