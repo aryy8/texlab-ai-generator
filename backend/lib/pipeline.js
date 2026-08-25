@@ -3,6 +3,7 @@
  */
 
 import { retrieveCatalogMatches } from "./retrieve.js";
+import { loadIconSnippets } from "./icons.js";
 import {
   generateFromTemplate,
   generateBlankCanvas,
@@ -43,6 +44,9 @@ export async function runPipeline(prompt, options = {}) {
   const started = Date.now();
 
   const retrieval = await retrieveCatalogMatches(trimmed, options);
+  const icons = loadIconSnippets(retrieval.icons, options);
+  const genOptions = { ...options, icons };
+
   const trace = {
     retrieval: {
       path: retrieval.path,
@@ -55,14 +59,21 @@ export async function runPipeline(prompt, options = {}) {
         score: Number(m.score.toFixed(4)),
         name: m.name,
       })),
+      icons: icons.map((i) => ({
+        id: i.id,
+        score: Number((i.score ?? 0).toFixed(4)),
+        name: i.name,
+        macro: i.macro,
+        keywordMatch: Boolean(i.keywordMatch),
+      })),
     },
   };
 
   async function generateOnce(feedback = null) {
     if (retrieval.matched && retrieval.best) {
-      return generateFromTemplate(trimmed, retrieval.best, options);
+      return generateFromTemplate(trimmed, retrieval.best, genOptions);
     }
-    return generateBlankCanvas(trimmed, { ...options, feedback });
+    return generateBlankCanvas(trimmed, { ...genOptions, feedback });
   }
 
   let generation = await generateOnce();
@@ -111,6 +122,7 @@ export async function runPipeline(prompt, options = {}) {
     pngBase64: toBase64(compiled.png),
     templateId: generation.templateId,
     generationMode: generation.mode,
+    iconIds: generation.iconIds || icons.map((i) => i.id),
     repairCount: compiled.repairCount,
     outerRetries,
     qualityScores: quality?.scores ?? null,

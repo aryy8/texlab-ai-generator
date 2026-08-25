@@ -1,20 +1,20 @@
 /**
  * Generation paths:
  *   A — edit matched template/example under edit_contract
- *   B — blank-canvas: describe → TikZ
+ *   B — blank-canvas: describe → TikZ (optionally with OpenTikZ icons inlined)
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { OPENTIKZ_ROOT } from "./paths.js";
 import { createChatCompletion } from "./openrouter.js";
+import { formatIconsForPrompt } from "./icons.js";
 
 function stripCodeFence(text) {
   let t = text.trim();
   if (t.startsWith("```")) {
     t = t.replace(/^```(?:latex|tex)?\s*/i, "").replace(/\s*```$/i, "").trim();
   }
-  // Models often prepend analysis before the real document.
   const docClass = t.search(/\\documentclass\b/);
   const beginTikz = t.search(/\\begin\s*\{tikzpicture\}/);
   const starts = [docClass, beginTikz].filter((i) => i >= 0);
@@ -30,7 +30,6 @@ function stripCodeFence(text) {
   return t.trim();
 }
 
-/** Pull the most useful TeX error lines from a compile log. */
 export function summarizeCompileLog(log, maxLines = 8) {
   if (!log) return "";
   const lines = String(log)
@@ -57,9 +56,18 @@ function resolveFigureFiles(catalogEntry) {
   throw new Error(`No .tex found for catalog entry ${catalogEntry.id} at ${catalogEntry.path}`);
 }
 
+const ICON_COMPOSE_SYSTEM = `When OpenTikZ icons are provided:
+- INLINE them as \\newcommand{\\…pic}{…} macros (never \\input a path).
+- Paste the provided TikZ bodies VERBATIM — do not invent cloud/cylinder/circle stand-ins.
+- Keyword-matched icons for concepts in the request MUST appear in the figure.
+- Separate icon glyph from label text (\\node{\\gpupic} + separate label node).
+- Scale with \\scalebox so icons fit; keep brand* colors for brand marks.`;
+
 export async function generateFromTemplate(prompt, catalogEntry, options = {}) {
   const { tex, meta } = resolveFigureFiles(catalogEntry);
   const editContract = meta.edit_contract || null;
+  const icons = options.icons || [];
+  const iconBlock = formatIconsForPrompt(icons);
 
   const system = `You are a TikZ expert editing an OpenTikZ figure for teXlab.
 Return ONLY a complete, compilable standalone LaTeX document (\\documentclass{standalone} … \\end{document}).
@@ -69,8 +77,9 @@ Rules:
 - Preserve the overall structure, packages, and visual language of the template.
 - Follow the edit_contract strictly when provided: only change listed parameters / allowed node labels / allowed edits.
 - If there is no edit_contract, you may adapt labels, colors, and minor geometry to match the user request, but keep the architecture recognizable.
-- Do not invent packages that are not already in the template unless required for a small label tweak.
-- Output must compile with pdflatex.`;
+- Do not invent packages that are not already in the template unless required for a small label tweak or an inlined icon library (e.g. svg.path).
+- Output must compile with pdflatex.
+${icons.length ? `\n${ICON_COMPOSE_SYSTEM}` : ""}`;
 
   const user = `User request:
 ${prompt}
@@ -88,7 +97,7 @@ Current template.tex:
 \`\`\`tex
 ${tex}
 \`\`\`
-
+${iconBlock ? `\n${iconBlock}\n` : ""}
 Edit the template to satisfy the user request. Return the full .tex file.`;
 
   const { content, model } = await createChatCompletion(
@@ -105,18 +114,25 @@ Edit the template to satisfy the user request. Return the full .tex file.`;
     mode: "template",
     templateId: catalogEntry.id,
     editContract,
+    iconIds: icons.map((i) => i.id),
   };
 }
 
 export async function generateBlankCanvas(prompt, options = {}) {
   const feedback = options.feedback || null;
+  const icons = options.icons || [];
+  const iconBlock = formatIconsForPrompt(icons);
 
   const describeSystem = `You expand a short diagram request into a precise drawing specification for TikZ.
 Describe geometry, layout, node positions (relative), labels, colors, arrows, and grouping.
+${icons.length ? "Prefer using the provided OpenTikZ icons for matching concepts (GPU, server, cloud, brands, etc.) — name which icon ids to place where." : ""}
 Do NOT write any LaTeX or TikZ code. Be concrete and complete.`;
 
   const describeUser = [
     `User request:\n${prompt}`,
+    icons.length
+      ? `\nAvailable OpenTikZ icons: ${icons.map((i) => `${i.id} (${i.name})`).join(", ")}`
+      : "",
     feedback ? `\nPrevious attempt feedback (fix accordingly):\n${feedback}` : "",
   ].join("");
 
@@ -133,14 +149,15 @@ Return ONLY the .tex source (\\documentclass[border=…]{standalone} … \\end{d
 No markdown fences, no commentary.
 Use \\usepackage{tikz} and any needed \\usetikzlibrary{…}.
 Prefer clear layout, non-overlapping labels, and colorblind-friendly colors.
-Must compile with pdflatex.`;
+Must compile with pdflatex.
+${icons.length ? `\n${ICON_COMPOSE_SYSTEM}` : ""}`;
 
   const codeUser = `User request:
 ${prompt}
 
 Drawing specification:
 ${description}
-
+${iconBlock ? `\n${iconBlock}\n` : ""}
 Write the complete standalone .tex file.`;
 
   const { content, model } = await createChatCompletion(
@@ -156,8 +173,9 @@ Write the complete standalone .tex file.`;
     model,
     describeModel,
     description,
-    mode: "blank",
+    mode: icons.length ? "blank+icons" : "blank",
     templateId: null,
+    iconIds: icons.map((i) => i.id),
   };
 }
 

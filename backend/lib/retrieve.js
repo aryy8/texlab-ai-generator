@@ -4,6 +4,7 @@
 
 import { createEmbeddings } from "./openrouter.js";
 import { getCatalogIndex } from "./catalog-index.js";
+import { ICON_SCORE_FLOOR, MAX_ICONS, selectIconsForPrompt } from "./icons.js";
 
 /** Below this best-score, treat as no-match → blank-canvas fallback. */
 export const MATCH_THRESHOLD = 0.36;
@@ -24,7 +25,8 @@ export function cosineSimilarity(a, b) {
 
 /**
  * @returns {Promise<{
- *   matches: Array<{ id, name, type, path, score, tags, description, requires }>,
+ *   matches: Array<object>,
+ *   icons: Array<object>,
  *   best: object|null,
  *   matched: boolean,
  *   path: 'template'|'blank',
@@ -33,6 +35,8 @@ export function cosineSimilarity(a, b) {
 export async function retrieveCatalogMatches(prompt, options = {}) {
   const topK = options.topK ?? 5;
   const threshold = options.threshold ?? MATCH_THRESHOLD;
+  const iconFloor = options.iconFloor ?? ICON_SCORE_FLOOR;
+  const iconLimit = options.iconLimit ?? MAX_ICONS;
   const index = options.index || (await getCatalogIndex(options));
 
   const [queryEmbedding] = await createEmbeddings([prompt], {
@@ -51,12 +55,18 @@ export async function retrieveCatalogMatches(prompt, options = {}) {
     .sort((a, b) => b.score - a.score);
 
   const matches = scored.slice(0, topK);
+  // Keyword grounding pins named icons (e.g. "database") even when embedding score < floor.
+  const icons = selectIconsForPrompt(prompt, scored, {
+    floor: iconFloor,
+    limit: iconLimit,
+  });
   const best = matches[0] || null;
 
-  // Icon-only best match → blank canvas (icons are atomic, not full figures).
+  // Icon-only best match → blank canvas, but still return icons for composition.
   const usable = best && best.score >= threshold && best.type !== "icon";
   return {
     matches,
+    icons,
     best: usable ? best : best?.score >= threshold ? best : null,
     matched: Boolean(usable),
     path: usable ? "template" : "blank",
