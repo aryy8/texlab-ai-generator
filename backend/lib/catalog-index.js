@@ -101,9 +101,14 @@ export async function getCatalogIndex(options = {}) {
     entries: indexed,
   };
 
-  mkdirSync(options.cacheDir || CACHE_DIR, { recursive: true });
-  writeFileSync(cachePath, JSON.stringify(payload));
-  console.log(`Wrote embedding cache → ${cachePath}`);
+  try {
+    mkdirSync(options.cacheDir || CACHE_DIR, { recursive: true });
+    writeFileSync(cachePath, JSON.stringify(payload));
+    console.log(`Wrote embedding cache → ${cachePath}`);
+  } catch (error) {
+    // Serverless read-only FS or full /tmp — still return the in-memory index.
+    console.warn(`Could not persist embedding cache (${cachePath}):`, error?.message || error);
+  }
 
   return {
     catalogHash: hash,
