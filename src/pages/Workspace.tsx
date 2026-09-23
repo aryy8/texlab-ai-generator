@@ -171,6 +171,8 @@ const Workspace = () => {
   const skipPreviewFitRef = useRef(false);
   const agentSnapshotsRef = useRef<Map<string, WorkspaceSessionPayload>>(new Map());
   const activeTabIdRef = useRef<string>("");
+  /** Bumped on tab switch / desk clear so late compile results cannot paint the wrong tab. */
+  const deskEpochRef = useRef(0);
 
   const [input, setInput] = useState("");
   const [versions, setVersions] = useState<LatexVersion[]>([]);
@@ -330,9 +332,18 @@ const Workspace = () => {
         setFitStatus("verified");
       } catch {
         previewPdfBase64Ref.current = null;
+        setPreviewUrl(null);
+        setPreviewError(null);
+        setIsPreviewLoading(false);
+        setFitStatus("idle");
       }
     } else {
       previewPdfBase64Ref.current = null;
+      setPreviewUrl(null);
+      setPreviewError(null);
+      setIsPreviewLoading(Boolean(activeLatex.trim()));
+      setFitStatus("idle");
+      setCompileMs(null);
     }
 
     const busy = session.busy;
@@ -869,7 +880,19 @@ const Workspace = () => {
     setIsRefining(false);
   };
 
+  const parkActiveTabSnapshot = () => {
+    const snap = sessionSnapshotRef.current;
+    if (!snap) return;
+    agentSnapshotsRef.current.set(activeTabIdRef.current, {
+      ...snap,
+      currentFigureId,
+      previewPdfBase64: previewPdfBase64Ref.current,
+      busy: null,
+    });
+  };
+
   const clearDesk = () => {
+    deskEpochRef.current += 1;
     abortActiveJobs();
     previewPdfBase64Ref.current = null;
     compileCacheRef.current.clear();
@@ -902,6 +925,7 @@ const Workspace = () => {
   };
 
   const applyFigureToDesk = (figure: StoredFigure) => {
+    deskEpochRef.current += 1;
     abortActiveJobs();
     manualSelectionRef.current = true;
     setInput(figure.prompt);
@@ -918,7 +942,7 @@ const Workspace = () => {
     previewPdfBase64Ref.current = null;
     setPreviewUrl(null);
     setPreviewError(null);
-    setIsPreviewLoading(false);
+    setIsPreviewLoading(figure.versions.length > 0);
     repairAttemptsRef.current = 0;
     fitRefineAttemptsRef.current = 0;
     setChatMessages([
@@ -935,21 +959,16 @@ const Workspace = () => {
   };
 
   const applyDeskSnapshot = (snap: WorkspaceSessionPayload) => {
+    deskEpochRef.current += 1;
     abortActiveJobs();
     applySession(snap);
   };
 
   const handleNewAgent = () => {
-    const snap = sessionSnapshotRef.current;
-    if (snap) {
-      // Persist current work into figure history before parking the tab.
-      if (snap.versions.length > 0) persistFigure();
-      agentSnapshotsRef.current.set(activeTabId, {
-        ...snap,
-        currentFigureId,
-        busy: null,
-      });
+    if (sessionSnapshotRef.current?.versions.length) {
+      persistFigure();
     }
+    parkActiveTabSnapshot();
 
     const tab = createAgentTab();
     setAgentTabs((prev) => [...prev, tab]);
@@ -963,14 +982,7 @@ const Workspace = () => {
 
   const switchAgentTab = (tabId: string) => {
     if (tabId === activeTabId) return;
-    const snap = sessionSnapshotRef.current;
-    if (snap) {
-      agentSnapshotsRef.current.set(activeTabId, {
-        ...snap,
-        currentFigureId,
-        busy: null,
-      });
-    }
+    parkActiveTabSnapshot();
     abortActiveJobs();
 
     const next = agentSnapshotsRef.current.get(tabId);
@@ -986,6 +998,10 @@ const Workspace = () => {
   const closeAgentTab = (tabId: string) => {
     const idx = agentTabs.findIndex((t) => t.id === tabId);
     if (idx < 0) return;
+
+    if (tabId === activeTabId) {
+      parkActiveTabSnapshot();
+    }
 
     agentSnapshotsRef.current.delete(tabId);
     const remaining = agentTabs.filter((t) => t.id !== tabId);
@@ -1080,14 +1096,18 @@ const Workspace = () => {
     compileAbortRef.current?.abort();
     const controller = new AbortController();
     compileAbortRef.current = controller;
+    const epoch = deskEpochRef.current;
 
     const applyResult = async (result: CompileResult) => {
+      if (controller.signal.aborted || deskEpochRef.current !== epoch) return;
+
       setPreviewUrl(result.status === "success" ? result.pdfUrl : null);
       setPreviewError(result.status === "error" ? result.log : null);
       setIsPreviewLoading(false);
 
       if (result.status === "success" && result.pdfUrl) {
         void pdfUrlToSessionBase64(result.pdfUrl).then((b64) => {
+          if (controller.signal.aborted || deskEpochRef.current !== epoch) return;
           previewPdfBase64Ref.current = b64;
           const snap = sessionSnapshotRef.current;
           if (snap) {
@@ -1099,14 +1119,16 @@ const Workspace = () => {
         if (skipPreviewFitRef.current) {
           skipPreviewFitRef.current = false;
           setFitStatus("verified");
-          if (!controller.signal.aborted) persistFigure();
+          if (!controller.signal.aborted && deskEpochRef.current === epoch) persistFigure();
           return;
         }
 
         setFitStatus("checking");
         const raster = await pdfUrlToPngDataUrl(result.pdfUrl);
-        if (raster && !controller.signal.aborted) {
+        if (deskEpochRef.current !== epoch || controller.signal.aborted) return;
+        if (raster) {
           const fit = await validateFigureFit(raster, documentFit);
+          if (deskEpochRef.current !== epoch || controller.signal.aborted) return;
           if (fit) {
             setFitStatus(fit.status);
             if (
@@ -1120,7 +1142,7 @@ const Workspace = () => {
             setFitStatus("verified");
           }
         }
-        if (!controller.signal.aborted) persistFigure();
+        if (!controller.signal.aborted && deskEpochRef.current === epoch) persistFigure();
       } else if (result.status === "error") {
         previewPdfBase64Ref.current = null;
         setFitStatus("idle");
@@ -1263,7 +1285,7 @@ const Workspace = () => {
 
   return (
     <div className={`workspace-desk flex h-[100dvh] flex-col overflow-hidden ${workspaceDark ? "dark" : ""}`}>
-      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] bg-[var(--ws-bg)] px-3">
+      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] bg-[var(--ws-bar)] px-3">
         <div className="flex items-center gap-2.5">
           <Link to="/" className="font-heading text-sm font-bold tracking-tighter hover:opacity-80">
             te<span className="font-mono">X</span>lab
@@ -1298,7 +1320,7 @@ const Workspace = () => {
       <div className="min-h-0 flex-1">
         <ResizablePanelGroup direction="horizontal" autoSaveId="texlab-workspace-desk" className="h-full">
           <ResizablePanel defaultSize={30} minSize={18} maxSize={42} className="min-w-0">
-            <aside className="flex h-full min-h-0 flex-col bg-[var(--ws-bg)]">
+            <aside className="flex h-full min-h-0 flex-col bg-[var(--ws-panel,var(--ws-bg))]">
               <div className="flex h-9 shrink-0 items-center border-b border-[var(--ws-divider)] px-1.5">
                 <AgentToolbar
                   tabs={agentTabs}
@@ -1680,7 +1702,7 @@ const Workspace = () => {
                       {isGenerating ? (
                         <BlueprintBusy message={codeBusyMessage} />
                       ) : output ? (
-                        <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+                        <div className="ws-code-pane min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3">
                           <LatexCode code={codeView === "paste" ? pasteSnippet : output} />
                         </div>
                       ) : (
