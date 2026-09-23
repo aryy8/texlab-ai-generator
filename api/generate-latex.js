@@ -1,5 +1,6 @@
 import { createCompletion, SELECTABLE_MODEL_IDS } from "./_lib/openrouter-client.js";
 import { checkRateLimit, validatePrompt, leaksSystemPrompt } from "./_lib/security.js";
+import { moderateInput } from "./_lib/moderate.js";
 import { matchLibraryTemplate, LIBRARY_EDIT_PROMPT } from "./_lib/texlab-library.js";
 
 const MAX_PROMPT_LENGTH = 4000;
@@ -387,8 +388,9 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const rate = checkRateLimit(req);
+    const rate = await checkRateLimit(req, { profile: "generate", res });
     if (!rate.allowed) {
+        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
         return res.status(429).json({
             error: `Too many requests. Please wait ${rate.retryAfterSeconds}s and try again.`,
         });
@@ -429,6 +431,20 @@ export default async function handler(req, res) {
         : resolveReferences(references);
     if (resolvedReferences.error) {
         return res.status(400).json({ error: resolvedReferences.error });
+    }
+
+    // Semantic moderation on user-facing generate/refine text (skip repair logs).
+    if (mode === "generate" || mode === "refine") {
+        const textParts = [prompt.trim()];
+        if (resolvedReferences.textBlocks?.length) {
+            textParts.push(...resolvedReferences.textBlocks);
+        }
+        const moderation = await moderateInput(textParts.join("\n\n"));
+        if (!moderation.allowed) {
+            return res.status(403).json({
+                error: moderation.clientMessage || "Request blocked by safety policy.",
+            });
+        }
     }
 
     const apiKey = process.env.OPEN_ROUTER_API;
