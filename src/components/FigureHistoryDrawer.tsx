@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -7,6 +6,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import { deleteFigure, listFigures, renameFigure, type StoredFigure } from "@/lib/figure-history";
 import { Archive, Pencil, Trash2 } from "lucide-react";
 
@@ -30,14 +30,14 @@ export function FigureHistoryDrawer({ onRestore }: FigureHistoryDrawerProps) {
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden font-mono text-xs sm:flex border-border hover:bg-muted"
+        <button
+          type="button"
+          className="ws-figures-btn hidden sm:inline-flex"
+          aria-label="My figures"
         >
-          <Archive className="mr-1.5 h-3.5 w-3.5" />
-          My figures
-        </Button>
+          <Archive className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+          <span>My figures</span>
+        </button>
       </SheetTrigger>
       <SheetContent className="flex h-full w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4 pr-12 text-left">

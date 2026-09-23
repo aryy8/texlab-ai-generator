@@ -25,7 +25,7 @@ import { validateFigureFit, type FitStatus } from "@/lib/fit-validation";
 import { saveFigure, type StoredFigure } from "@/lib/figure-history";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
 import { openInOverleaf, downloadFigureZip } from "@/lib/overleaf-export";
-import { FigureHistoryDrawer } from "@/components/FigureHistoryDrawer";
+import { AgentToolbar, type AgentTab } from "@/components/AgentToolbar";
 import { FormatSelector } from "@/components/FormatSelector";
 import { ModelSelector } from "@/components/ModelSelector";
 import { SketchingPreview } from "@/components/SketchingPreview";
@@ -36,8 +36,12 @@ import {
   type WorkspaceHandoff,
 } from "@/lib/workspace-handoff";
 import {
+  clearWorkspaceSession,
   loadWorkspaceSession,
   saveWorkspaceSession,
+  pdfUrlToSessionBase64,
+  sessionBase64ToPdfUrl,
+  type WorkspaceSessionPayload,
 } from "@/lib/workspace-session";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -58,10 +62,6 @@ import {
   X,
   FileText,
   Maximize2,
-  Workflow,
-  Table as TableIcon,
-  Sigma,
-  LineChart,
   GitBranch,
   CircleX,
   TriangleAlert,
@@ -87,17 +87,6 @@ interface ChatMessage {
 const MAX_REFERENCES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES = 20_000;
-
-const OUTPUT_TYPE_OPTIONS: Array<{
-  value: OutputType;
-  label: string;
-  icon: typeof Workflow;
-}> = [
-  { value: "diagram", label: "Diagram", icon: Workflow },
-  { value: "table", label: "Table", icon: TableIcon },
-  { value: "equation", label: "Equation", icon: Sigma },
-  { value: "plot", label: "Plot", icon: LineChart },
-];
 
 const STYLE_OPTIONS: Record<OutputType, Array<{ value: string; label: string }>> = {
   diagram: [
@@ -156,13 +145,32 @@ const REPAIR_STAGES = [
   "Almost there…",
 ];
 
-type PipelineStage = "idle" | "generating" | "compiling" | "repairing" | "fit_ok" | "fit_warn" | "error";
+function createAgentTab(partial?: Partial<AgentTab>): AgentTab {
+  return {
+    id: partial?.id ?? crypto.randomUUID(),
+    title: partial?.title?.trim() || "New Agent",
+    figureId: partial?.figureId ?? null,
+  };
+}
+
+function titleFromPrompt(prompt: string, fallback = "New Agent"): string {
+  const t = prompt.trim().replace(/\s+/g, " ");
+  if (!t) return fallback;
+  return t.length <= 28 ? t : `${t.slice(0, 27)}…`;
+}
 
 const Workspace = () => {
   const location = useLocation();
   const handoffBootRef = useRef(false);
   const sessionReadyRef = useRef(false);
   const skipSessionSaveRef = useRef(false);
+  const sessionSnapshotRef = useRef<WorkspaceSessionPayload | null>(null);
+  const activeJobRef = useRef<{ kind: "generate" | "refine"; prompt: string } | null>(null);
+  const pendingRefineResumeRef = useRef<string | null>(null);
+  const previewPdfBase64Ref = useRef<string | null>(null);
+  const skipPreviewFitRef = useRef(false);
+  const agentSnapshotsRef = useRef<Map<string, WorkspaceSessionPayload>>(new Map());
+  const activeTabIdRef = useRef<string>("");
 
   const [input, setInput] = useState("");
   const [versions, setVersions] = useState<LatexVersion[]>([]);
@@ -192,9 +200,6 @@ const Workspace = () => {
   const [style, setStyle] = useState<string | null>(null);
   // Auto-detection drives type/style until the user picks one manually.
   const manualSelectionRef = useRef(false);
-  // Once a type exists, the picker collapses to just that type; expanding it
-  // again lets the user switch to a different type.
-  const [typeExpanded, setTypeExpanded] = useState(false);
   const [colorMode, setColorMode] = useState<ColorMode>("academic");
   const [density, setDensity] = useState<Density>("normal");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("auto");
@@ -208,6 +213,12 @@ const Workspace = () => {
   const [codeView, setCodeView] = useState<"source" | "paste">("paste");
   const [isExporting, setIsExporting] = useState(false);
   const [currentFigureId, setCurrentFigureId] = useState<string | null>(null);
+  const [agentTabs, setAgentTabs] = useState<AgentTab[]>(() => {
+    const tab = createAgentTab();
+    activeTabIdRef.current = tab.id;
+    return [tab];
+  });
+  const [activeTabId, setActiveTabId] = useState(() => activeTabIdRef.current);
   const [workspaceDark, setWorkspaceDark] = useState(() => {
     try {
       const stored = localStorage.getItem("texlab-workspace-theme");
@@ -248,16 +259,6 @@ const Workspace = () => {
     documentFit,
   };
 
-  const pipelineStage: PipelineStage = (() => {
-    if (isGenerating || isRefining) return "generating";
-    if (isPreviewLoading && previewStage === "repairing") return "repairing";
-    if (isPreviewLoading) return "compiling";
-    if (previewError) return "error";
-    if (output && (fitStatus === "may_overflow" || fitStatus === "cropped")) return "fit_warn";
-    if (output && (fitStatus === "verified" || previewUrl)) return "fit_ok";
-    return "idle";
-  })();
-
   const pushChat = (message: Omit<ChatMessage, "id">) => {
     setChatMessages((prev) => [
       ...prev,
@@ -278,7 +279,6 @@ const Workspace = () => {
     setReferences(handoff.references);
     setGenerationModel(handoff.generationModel);
     saveStoredModel(handoff.generationModel);
-    setTypeExpanded(false);
     if (handoff.prompt.trim()) {
       setChatMessages([
         {
@@ -311,9 +311,43 @@ const Workspace = () => {
     saveStoredModel(session.generationModel);
     setCurrentFigureId(session.currentFigureId);
     setCodeView(session.codeView === "source" ? "source" : "paste");
-    setTypeExpanded(false);
-    pendingAutoGenerateRef.current = false;
     repairAttemptsRef.current = 2; // skip auto-repair storm on restored compile
+
+    const activeLatex =
+      session.versions[
+        Math.min(Math.max(session.activeVersion, 0), Math.max(session.versions.length - 1, 0))
+      ]?.latex ?? "";
+    if (session.previewPdfBase64 && activeLatex.trim()) {
+      try {
+        const url = sessionBase64ToPdfUrl(session.previewPdfBase64);
+        const doc = buildPreviewDocument(activeLatex, session.documentFit);
+        compileCacheRef.current.set(doc, { status: "success", pdfUrl: url });
+        previewPdfBase64Ref.current = session.previewPdfBase64;
+        skipPreviewFitRef.current = true;
+        setPreviewUrl(url);
+        setPreviewError(null);
+        setIsPreviewLoading(false);
+        setFitStatus("verified");
+      } catch {
+        previewPdfBase64Ref.current = null;
+      }
+    } else {
+      previewPdfBase64Ref.current = null;
+    }
+
+    const busy = session.busy;
+    if (busy?.kind === "generate" && (busy.prompt || session.input).trim()) {
+      const prompt = (busy.prompt || session.input).trim();
+      setInput(prompt);
+      pendingAutoGenerateRef.current = true;
+      pendingRefineResumeRef.current = null;
+    } else if (busy?.kind === "refine" && busy.prompt.trim() && session.versions.length > 0) {
+      pendingAutoGenerateRef.current = false;
+      pendingRefineResumeRef.current = busy.prompt.trim();
+    } else {
+      pendingAutoGenerateRef.current = false;
+      pendingRefineResumeRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -339,14 +373,13 @@ const Workspace = () => {
           setAspectRatio(template.aspectRatio);
           setDocumentFit(template.documentFit);
           setArrowStyle(template.arrowStyle);
-          setTypeExpanded(false);
           setChatMessages([{ id: `tpl-${template.id}`, role: "user", content: template.prompt }]);
           pendingAutoGenerateRef.current = true;
           skipSessionSaveRef.current = true;
         }
       } else {
         const session = loadWorkspaceSession();
-        if (session && (session.versions.length > 0 || session.input.trim() || session.chatMessages.length > 0)) {
+        if (session && (session.versions.length > 0 || session.input.trim() || session.chatMessages.length > 0 || session.busy)) {
           applySession(session);
           skipSessionSaveRef.current = true;
         }
@@ -356,15 +389,9 @@ const Workspace = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once on mount
   }, []);
 
-  // Persist workspace so refresh keeps the current figure / chat.
+  // Keep a live snapshot and persist through generation so Home → Workspace restores.
   useEffect(() => {
-    if (!sessionReadyRef.current) return;
-    if (skipSessionSaveRef.current) {
-      skipSessionSaveRef.current = false;
-      return;
-    }
-    if (isGenerating || isRefining) return;
-    saveWorkspaceSession({
+    const snapshot = {
       input,
       versions,
       activeVersion,
@@ -380,7 +407,20 @@ const Workspace = () => {
       generationModel,
       currentFigureId,
       codeView,
-    });
+      busy:
+        isGenerating || isRefining
+          ? activeJobRef.current
+          : null,
+      previewPdfBase64: previewPdfBase64Ref.current,
+    };
+    sessionSnapshotRef.current = snapshot;
+
+    if (!sessionReadyRef.current) return;
+    if (skipSessionSaveRef.current) {
+      skipSessionSaveRef.current = false;
+      return;
+    }
+    saveWorkspaceSession(snapshot);
   }, [
     input,
     versions,
@@ -401,12 +441,23 @@ const Workspace = () => {
     isRefining,
   ]);
 
-  const selectType = (value: OutputType) => {
-    manualSelectionRef.current = true;
-    setOutputType(value);
-    setStyle(STYLE_OPTIONS[value][0].value);
-    setTypeExpanded(false);
-  };
+  // Flush session + abort in-flight work when leaving the workspace (e.g. Home).
+  useEffect(() => {
+    const flush = () => {
+      const snap = sessionSnapshotRef.current;
+      if (snap) saveWorkspaceSession(snap);
+    };
+    const onLeave = () => flush();
+    window.addEventListener("pagehide", onLeave);
+    window.addEventListener("beforeunload", onLeave);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      window.removeEventListener("beforeunload", onLeave);
+      generationAbortRef.current?.abort();
+      compileAbortRef.current?.abort();
+      flush();
+    };
+  }, []);
 
   const selectStyle = (value: string) => {
     manualSelectionRef.current = true;
@@ -421,7 +472,6 @@ const Workspace = () => {
       const detected = detectFromPrompt(input);
       setOutputType(detected.type);
       setStyle(detected.style);
-      if (detected.type) setTypeExpanded(false);
     }, 350);
     return () => clearTimeout(handle);
   }, [input]);
@@ -575,6 +625,7 @@ const Workspace = () => {
     generationAbortRef.current?.abort();
     compileAbortRef.current?.abort();
     generationAbortRef.current = null;
+    activeJobRef.current = null;
     setIsGenerating(false);
     setIsRefining(false);
     setIsPreviewLoading(false);
@@ -594,11 +645,14 @@ const Workspace = () => {
     generationAbortRef.current?.abort();
     const controller = new AbortController();
     generationAbortRef.current = controller;
+    activeJobRef.current = { kind: "generate", prompt };
     setIsGenerating(true);
     repairAttemptsRef.current = 0;
     fitRefineAttemptsRef.current = 0;
     setFitStatus("idle");
     setCurrentFigureId(null);
+    previewPdfBase64Ref.current = null;
+    setPreviewUrl(null);
     try {
       const latex = await generateLaTeX(
         prompt,
@@ -626,6 +680,9 @@ const Workspace = () => {
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null;
       }
+      if (activeJobRef.current?.kind === "generate") {
+        activeJobRef.current = null;
+      }
       setIsGenerating(false);
     }
   };
@@ -636,6 +693,7 @@ const Workspace = () => {
     generationAbortRef.current?.abort();
     const controller = new AbortController();
     generationAbortRef.current = controller;
+    activeJobRef.current = { kind: "refine", prompt: instruction };
     setIsRefining(true);
     try {
       // Attach a rasterized snapshot of the current preview so the vision
@@ -689,6 +747,9 @@ const Workspace = () => {
     } finally {
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null;
+      }
+      if (activeJobRef.current?.kind === "refine") {
+        activeJobRef.current = null;
       }
       setIsRefining(false);
     }
@@ -774,10 +835,74 @@ const Workspace = () => {
     setDensity(template.density);
     setAspectRatio(template.aspectRatio);
     setDocumentFit(template.documentFit);
-    setTypeExpanded(false);
   };
 
   const restoreFigure = (figure: StoredFigure) => {
+    const existing = agentTabs.find((t) => t.figureId === figure.id);
+    if (existing) {
+      if (existing.id !== activeTabId) {
+        switchAgentTab(existing.id);
+      }
+      return;
+    }
+
+    // Park current desk, then open the figure in a new tab.
+    const snap = sessionSnapshotRef.current;
+    if (snap) agentSnapshotsRef.current.set(activeTabId, snap);
+    abortActiveJobs();
+
+    const tab = createAgentTab({ title: figure.title || titleFromPrompt(figure.prompt), figureId: figure.id });
+    setAgentTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    activeTabIdRef.current = tab.id;
+    applyFigureToDesk(figure);
+    toast.success("Agent restored");
+  };
+
+  const abortActiveJobs = () => {
+    generationAbortRef.current?.abort();
+    compileAbortRef.current?.abort();
+    activeJobRef.current = null;
+    pendingAutoGenerateRef.current = false;
+    pendingRefineResumeRef.current = null;
+    setIsGenerating(false);
+    setIsRefining(false);
+  };
+
+  const clearDesk = () => {
+    abortActiveJobs();
+    previewPdfBase64Ref.current = null;
+    compileCacheRef.current.clear();
+    repairAttemptsRef.current = 0;
+    fitRefineAttemptsRef.current = 0;
+    manualSelectionRef.current = false;
+
+    setInput("");
+    setVersions([]);
+    setActiveVersion(0);
+    setChatMessages([]);
+    setChatDraft("");
+    setRefineInput("");
+    setReferences([]);
+    setCurrentFigureId(null);
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setIsPreviewLoading(false);
+    setFitStatus("idle");
+    setCompileMs(null);
+    setShowSketchOverlay(false);
+    setOutputType(null);
+    setStyle(null);
+    setColorMode("academic");
+    setDensity("normal");
+    setAspectRatio("auto");
+    setArrowStyle("solid");
+    setDocumentFit("column");
+    setCodeView("paste");
+  };
+
+  const applyFigureToDesk = (figure: StoredFigure) => {
+    abortActiveJobs();
     manualSelectionRef.current = true;
     setInput(figure.prompt);
     setOutputType(figure.preferences.outputType);
@@ -790,6 +915,10 @@ const Workspace = () => {
     setVersions(figure.versions);
     setActiveVersion(figure.activeVersion);
     setCurrentFigureId(figure.id);
+    previewPdfBase64Ref.current = null;
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setIsPreviewLoading(false);
     repairAttemptsRef.current = 0;
     fitRefineAttemptsRef.current = 0;
     setChatMessages([
@@ -801,7 +930,104 @@ const Workspace = () => {
         meta: `${figure.versions.length} version${figure.versions.length === 1 ? "" : "s"}`,
       },
     ]);
+    setChatDraft("");
+    setRefineInput("");
   };
+
+  const applyDeskSnapshot = (snap: WorkspaceSessionPayload) => {
+    abortActiveJobs();
+    applySession(snap);
+  };
+
+  const handleNewAgent = () => {
+    const snap = sessionSnapshotRef.current;
+    if (snap) {
+      // Persist current work into figure history before parking the tab.
+      if (snap.versions.length > 0) persistFigure();
+      agentSnapshotsRef.current.set(activeTabId, {
+        ...snap,
+        currentFigureId,
+        busy: null,
+      });
+    }
+
+    const tab = createAgentTab();
+    setAgentTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    activeTabIdRef.current = tab.id;
+    clearDesk();
+    clearWorkspaceSession();
+    sessionSnapshotRef.current = null;
+    toast.success("New agent");
+  };
+
+  const switchAgentTab = (tabId: string) => {
+    if (tabId === activeTabId) return;
+    const snap = sessionSnapshotRef.current;
+    if (snap) {
+      agentSnapshotsRef.current.set(activeTabId, {
+        ...snap,
+        currentFigureId,
+        busy: null,
+      });
+    }
+    abortActiveJobs();
+
+    const next = agentSnapshotsRef.current.get(tabId);
+    setActiveTabId(tabId);
+    activeTabIdRef.current = tabId;
+    if (next) {
+      applyDeskSnapshot(next);
+    } else {
+      clearDesk();
+    }
+  };
+
+  const closeAgentTab = (tabId: string) => {
+    const idx = agentTabs.findIndex((t) => t.id === tabId);
+    if (idx < 0) return;
+
+    agentSnapshotsRef.current.delete(tabId);
+    const remaining = agentTabs.filter((t) => t.id !== tabId);
+
+    if (remaining.length === 0) {
+      const tab = createAgentTab();
+      setAgentTabs([tab]);
+      setActiveTabId(tab.id);
+      activeTabIdRef.current = tab.id;
+      clearDesk();
+      clearWorkspaceSession();
+      sessionSnapshotRef.current = null;
+      return;
+    }
+
+    setAgentTabs(remaining);
+    if (tabId !== activeTabId) return;
+
+    const next = remaining[Math.max(0, idx - 1)] ?? remaining[0];
+    setActiveTabId(next.id);
+    activeTabIdRef.current = next.id;
+    const nextSnap = agentSnapshotsRef.current.get(next.id);
+    if (nextSnap) applyDeskSnapshot(nextSnap);
+    else clearDesk();
+  };
+
+  // Keep the active tab label in sync with the current chat / figure.
+  useEffect(() => {
+    const title =
+      titleFromPrompt(
+        chatMessages.find((m) => m.role === "user")?.content
+          || input
+          || "",
+      );
+    setAgentTabs((prev) => {
+      const cur = prev.find((t) => t.id === activeTabId);
+      if (!cur || (cur.title === title && cur.figureId === currentFigureId)) return prev;
+      return prev.map((t) =>
+        t.id === activeTabId ? { ...t, title, figureId: currentFigureId } : t,
+      );
+    });
+  }, [activeTabId, chatMessages, input, currentFigureId]);
 
   const runAutoFitRefine = async () => {
     if (!output || fitRefineAttemptsRef.current >= 1) return;
@@ -861,6 +1087,22 @@ const Workspace = () => {
       setIsPreviewLoading(false);
 
       if (result.status === "success" && result.pdfUrl) {
+        void pdfUrlToSessionBase64(result.pdfUrl).then((b64) => {
+          previewPdfBase64Ref.current = b64;
+          const snap = sessionSnapshotRef.current;
+          if (snap) {
+            sessionSnapshotRef.current = { ...snap, previewPdfBase64: b64 };
+            saveWorkspaceSession(sessionSnapshotRef.current);
+          }
+        });
+
+        if (skipPreviewFitRef.current) {
+          skipPreviewFitRef.current = false;
+          setFitStatus("verified");
+          if (!controller.signal.aborted) persistFigure();
+          return;
+        }
+
         setFitStatus("checking");
         const raster = await pdfUrlToPngDataUrl(result.pdfUrl);
         if (raster && !controller.signal.aborted) {
@@ -880,6 +1122,7 @@ const Workspace = () => {
         }
         if (!controller.signal.aborted) persistFigure();
       } else if (result.status === "error") {
+        previewPdfBase64Ref.current = null;
         setFitStatus("idle");
       }
     };
@@ -986,35 +1229,25 @@ const Workspace = () => {
   }, [previewBusy]);
 
   useEffect(() => {
-    if (!pendingAutoGenerateRef.current) return;
-    if (!input.trim()) return;
-    pendingAutoGenerateRef.current = false;
-    void handleGenerate(input);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once after handoff hydrate
-  }, [input]);
+    if (pendingAutoGenerateRef.current) {
+      if (!input.trim()) return;
+      pendingAutoGenerateRef.current = false;
+      void handleGenerate(input);
+      return;
+    }
+    if (pendingRefineResumeRef.current) {
+      const instruction = pendingRefineResumeRef.current;
+      pendingRefineResumeRef.current = null;
+      if (output) void handleRefine(instruction);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once after handoff/session hydrate
+  }, [input, output]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [chatMessages, isGenerating, isRefining, isPreviewLoading]);
-
-  const pipelineLabel =
-    pipelineStage === "generating"
-      ? isRefining
-        ? "Refining…"
-        : "Generating…"
-      : pipelineStage === "compiling"
-        ? "Compiling…"
-        : pipelineStage === "repairing"
-          ? "Auto-repairing…"
-          : pipelineStage === "error"
-            ? "Compile failed"
-            : pipelineStage === "fit_warn"
-              ? "Fit warning"
-              : pipelineStage === "fit_ok"
-                ? "Ready"
-                : "Idle";
 
   const toggleWorkspaceTheme = () => {
     setWorkspaceDark((prev) => {
@@ -1038,55 +1271,24 @@ const Workspace = () => {
           <span className="hidden border border-[var(--ws-input-border)] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[var(--ws-text-muted)] sm:inline">
             workspace
           </span>
-          <nav className="ml-1 hidden items-center gap-0.5 md:flex" aria-label="Figure type">
-            {OUTPUT_TYPE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => selectType(option.value)}
-                className={`rounded-md px-2 py-0.5 font-mono text-[10px] transition-colors ${
-                  resolvedType === option.value
-                    ? "bg-[var(--ws-input)] text-[var(--ws-text)]"
-                    : "text-[var(--ws-text-muted)] hover:text-[var(--ws-text)]"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </nav>
-          <span
-            className={`flex items-center gap-1.5 border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
-              pipelineStage === "error"
-                ? "border-destructive/40 bg-destructive/10 text-destructive"
-                : pipelineStage === "fit_warn"
-                  ? "border-amber-600/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-                  : pipelineStage === "fit_ok"
-                    ? "border-emerald-600/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : pipelineStage === "idle"
-                      ? "border-border/70 text-muted-foreground"
-                      : "border-primary/30 bg-primary/10 text-foreground"
-            }`}
-          >
-            {(isGenerating || isRefining || isPreviewLoading) && (
-              <span className="ws-spinner" aria-hidden />
-            )}
-            {pipelineLabel}
-          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={toggleWorkspaceTheme}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--ws-text-muted)] transition-colors hover:bg-[var(--ws-hover)] hover:text-[var(--ws-text)]"
             title={workspaceDark ? "Switch to light mode" : "Switch to dark mode"}
             aria-label={workspaceDark ? "Switch to light mode" : "Switch to dark mode"}
           >
             {workspaceDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
-          <FigureHistoryDrawer onRestore={restoreFigure} />
           <Link
             to="/"
-            className="px-1.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="px-1.5 font-mono text-xs text-[var(--ws-text-muted)] transition-colors hover:text-[var(--ws-text)]"
+            onClick={() => {
+              const snap = sessionSnapshotRef.current;
+              if (snap) saveWorkspaceSession(snap);
+            }}
           >
             Home
           </Link>
@@ -1097,15 +1299,17 @@ const Workspace = () => {
         <ResizablePanelGroup direction="horizontal" autoSaveId="texlab-workspace-desk" className="h-full">
           <ResizablePanel defaultSize={30} minSize={18} maxSize={42} className="min-w-0">
             <aside className="flex h-full min-h-0 flex-col bg-[var(--ws-bg)]">
-              <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ws-divider)] px-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ws-text-muted)]">
-                    Agent
-                  </span>
-                </div>
-                <span className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
-                  {output ? "Refine" : "Generate"}
-                </span>
+              <div className="flex h-9 shrink-0 items-center border-b border-[var(--ws-divider)] px-1.5">
+                <AgentToolbar
+                  tabs={agentTabs}
+                  activeTabId={activeTabId}
+                  currentFigureId={currentFigureId}
+                  disabled={false}
+                  onSelectTab={switchAgentTab}
+                  onCloseTab={closeAgentTab}
+                  onNewAgent={handleNewAgent}
+                  onRestore={restoreFigure}
+                />
               </div>
 
               <div ref={chatScrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">

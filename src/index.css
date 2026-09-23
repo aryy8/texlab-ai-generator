@@ -219,6 +219,187 @@
     color: var(--ws-text);
   }
 
+  /* Subtle “My figures” control — ghost by default, soft wash on hover */
+  .workspace-desk .ws-figures-btn {
+    align-items: center;
+    gap: 0.375rem;
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--ws-text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    transition:
+      color 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease;
+  }
+
+  .workspace-desk .ws-figures-btn:hover {
+    color: var(--ws-text);
+    background-color: var(--ws-hover);
+  }
+
+  .workspace-desk .ws-figures-btn:focus-visible {
+    outline: none;
+    border-color: var(--ws-input-border-focus);
+    color: var(--ws-text);
+  }
+
+  .workspace-desk .ws-figures-btn[data-state="open"] {
+    color: var(--ws-text);
+    background-color: var(--ws-hover);
+  }
+
+  .workspace-desk:not(.dark) .ws-figures-btn:hover,
+  .workspace-desk:not(.dark) .ws-figures-btn[data-state="open"] {
+    background-color: rgba(15, 23, 42, 0.05);
+  }
+
+  .workspace-desk.dark .ws-figures-btn:hover,
+  .workspace-desk.dark .ws-figures-btn[data-state="open"] {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  /* Cursor-like agent chat tabs */
+  .workspace-desk .ws-agent-tabs {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .workspace-desk .ws-agent-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-desk .ws-agent-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    max-width: 11rem;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0.5rem 0 0.625rem;
+    border-right: 1px solid var(--ws-divider);
+    color: var(--ws-text-muted);
+    background: transparent;
+  }
+
+  .workspace-desk .ws-agent-tab--active {
+    color: var(--ws-text);
+    background-color: var(--ws-hover);
+  }
+
+  .workspace-desk.dark .ws-agent-tab--active {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .workspace-desk:not(.dark) .ws-agent-tab--active {
+    background-color: rgba(15, 23, 42, 0.05);
+  }
+
+  .workspace-desk .ws-agent-tab-main {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-family: var(--font-heading, ui-sans-serif, system-ui, sans-serif);
+    font-size: 12px;
+    line-height: 1;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .workspace-desk .ws-agent-tab-main:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .workspace-desk .ws-agent-tab-close {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-left: 0.125rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--ws-text-muted);
+    cursor: pointer;
+  }
+
+  .workspace-desk .ws-agent-tab-close:hover:not(:disabled) {
+    color: var(--ws-text);
+    background-color: rgba(127, 127, 127, 0.18);
+  }
+
+  .workspace-desk .ws-agent-tab-close:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  /* Cursor-like agent header icons — color only, no opacity (avoids SVG jitter) */
+  .workspace-desk .ws-agent-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: color-mix(in srgb, var(--ws-text) 72%, transparent);
+    line-height: 0;
+    cursor: pointer;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    transition: color 120ms ease;
+  }
+
+  .workspace-desk .ws-agent-icon-btn:hover:not(:disabled) {
+    color: var(--ws-text);
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .workspace-desk .ws-agent-icon-btn:focus-visible {
+    outline: none;
+    color: var(--ws-text);
+    background-color: var(--ws-hover);
+  }
+
+  .workspace-desk .ws-agent-icon-btn:disabled {
+    color: color-mix(in srgb, var(--ws-text) 35%, transparent);
+    cursor: not-allowed;
+  }
+
+  .workspace-desk .ws-agent-icon-btn--active {
+    color: var(--ws-text);
+  }
+
+  .workspace-desk .ws-agent-icon-btn svg {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .workspace-desk .ws-agent-history {
+    border-radius: 0.5rem;
+  }
+
   .ws-menu-trigger {
     color: var(--ws-text-muted);
   }
