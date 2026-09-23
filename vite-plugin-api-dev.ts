@@ -4,6 +4,7 @@ import generateLatex from "./api/generate-latex.js";
 import compileLatex from "./api/compile-latex.js";
 import exportOverleaf from "./api/export-overleaf.js";
 import generateOpenTikz from "./api/generate.js";
+import moderatePrompt from "./api/moderate.js";
 
 type ApiRes = {
   status: (code: number) => ApiRes;
@@ -67,6 +68,7 @@ const postRoutes: Record<string, ApiHandler> = {
   "/api/compile-latex": compileLatex as ApiHandler,
   "/api/export-overleaf": exportOverleaf as ApiHandler,
   "/api/generate": generateOpenTikz as ApiHandler,
+  "/api/moderate": moderatePrompt as ApiHandler,
   "/generate": generateOpenTikz as ApiHandler,
 };
 
@@ -74,7 +76,20 @@ export function apiDevPlugin(env: Record<string, string>): Plugin {
   return {
     name: "api-dev",
     configureServer(server: ViteDevServer) {
-      for (const key of ["OPEN_ROUTER_API", "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_TIER"]) {
+      for (const key of [
+        "OPEN_ROUTER_API",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MODEL",
+        "OPENROUTER_TIER",
+        "MODERATION_MODEL",
+        "MODERATION_FAIL_OPEN",
+        "MODERATION_DISABLED",
+        "UPSTASH_REDIS_REST_URL",
+        "UPSTASH_REDIS_REST_TOKEN",
+        "RATE_LIMIT_BURST",
+        "RATE_LIMIT_HOUR",
+        "RATE_LIMIT_DAY",
+      ]) {
         if (env[key]) {
           process.env[key] = env[key];
         }

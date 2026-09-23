@@ -8,6 +8,7 @@ import {
   type DocumentFit,
   type OutputType,
   type Reference,
+  checkPromptSafety,
 } from "@/lib/openrouter";
 import { detectFromPrompt } from "@/lib/detect";
 import { FIGURE_TEMPLATES } from "@/lib/templates";
@@ -27,6 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   ArrowUp,
   ArrowUpRight,
+  Loader2,
   SlidersHorizontal,
   Paperclip,
   X,
@@ -191,6 +193,7 @@ const Index = () => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [mockDark, setMockDark] = useState(false);
+  const [isCheckingSafety, setIsCheckingSafety] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const describeCardRef = useRef<HTMLDivElement | null>(null);
@@ -435,13 +438,26 @@ const Index = () => {
     navigate("/app", { state: { handoff } });
   };
 
-  const handleGenerate = () => {
-    if (!input.trim()) return;
+  const handleGenerate = async () => {
+    if (!input.trim() || isCheckingSafety) return;
     if (!outputType || !style) {
       setOutputType(resolvedType);
       setStyle(resolvedStyle);
     }
-    goToWorkspace(true);
+
+    setIsCheckingSafety(true);
+    try {
+      const safety = await checkPromptSafety(input.trim(), references);
+      if (!safety.allowed) {
+        toast.error(safety.error);
+        return;
+      }
+      goToWorkspace(true);
+    } catch {
+      toast.error("Could not verify this prompt. Please try again.");
+    } finally {
+      setIsCheckingSafety(false);
+    }
   };
 
   const applyTemplate = (templateId: string) => {
@@ -557,7 +573,7 @@ const Index = () => {
               placeholder={`e.g. ${placeholderText}|`}
               className="min-h-[120px] w-full resize-none bg-transparent px-4 py-4 font-heading text-base text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate();
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleGenerate();
               }}
             />
             {references.length > 0 && (
@@ -788,14 +804,19 @@ const Index = () => {
                 </Button>
 
                 <Button
-                  onClick={handleGenerate}
-                  disabled={!input.trim()}
+                  onClick={() => void handleGenerate()}
+                  disabled={!input.trim() || isCheckingSafety}
                   variant="default"
                   size="icon"
-                  aria-label="Generate in workspace"
+                  aria-label={isCheckingSafety ? "Checking prompt safety" : "Generate in workspace"}
+                  aria-busy={isCheckingSafety}
                   className="h-9 w-9 shrink-0 rounded-none shadow-sm transition-shadow hover:shadow-md disabled:shadow-none"
                 >
-                  <ArrowUp className="h-4 w-4" />
+                  {isCheckingSafety ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>

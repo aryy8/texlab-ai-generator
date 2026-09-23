@@ -45,6 +45,39 @@ type GenerationMode = "generate" | "refine" | "repair";
 
 export type GenerationModel = import("@/lib/models").GenerationModelId;
 
+/** Pre-flight safety check (home page). Does not generate. */
+export async function checkPromptSafety(
+  prompt: string,
+  references: Reference[] = [],
+): Promise<{ allowed: true } | { allowed: false; error: string }> {
+  const response = await fetch("/api/moderate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      references: references.filter((r) => r.kind === "text"),
+    }),
+  });
+
+  let data: { allowed?: boolean; error?: string } = {};
+  try {
+    data = await response.json();
+  } catch {
+    // ignore
+  }
+
+  if (response.ok && data.allowed) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    error:
+      (typeof data.error === "string" && data.error)
+      || `Server error: ${response.status}`,
+  };
+}
+
 /**
  * OpenTikZ pipeline (retrieve → generate → compile → judge).
  * Used for fresh diagram generation from the web app.
