@@ -9,8 +9,9 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const rate = checkRateLimit(req);
+    const rate = await checkRateLimit(req, { profile: "compile", res });
     if (!rate.allowed) {
+        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
         return res.status(429).json({
             error: `Too many requests. Please wait ${rate.retryAfterSeconds}s and try again.`,
         });
