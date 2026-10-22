@@ -58,3 +58,4 @@ teXlab is a minimal, fast, and precise tool that converts natural language descr
 ## License
 
 MIT © 2026 teXlab
+.
